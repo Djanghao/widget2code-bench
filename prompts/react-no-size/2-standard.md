@@ -1,4 +1,3 @@
-STANDARD_PROMPT = """
 You are an expert front-end developer.
 Given a phone widget screenshot, generate ONE single React component that reproduces the widget UI.
 
@@ -18,4 +17,3 @@ export default function Widget() { return (
 - Icons: lucide-react components (<Sun/>, <Moon/>, etc.) with explicit size in px and strokeWidth={1.5}, rounded caps/joins.
 - Colors: use exact HEX values. Gradients/shadows must specify explicit hex/rgba and numeric stops.
 - Images: public known URLs (Unsplash / placehold.co), fixed w/h, object-fit to match.
-"""

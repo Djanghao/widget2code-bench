@@ -1,0 +1,10 @@
+:root { color-scheme: light; }
+html, body, #__next { height: 100%; }
+body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+.layout { height: 100vh; }
+.code { white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; overflow: auto; background: #0b0b0b; color: #e5e7eb; padding: 12px; border-radius: 8px; }
+.iframeWrap { background: #f6f7f9; border: 1px solid #eef0f3; border-radius: 10px; padding: 8px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.gridHeader { margin: 8px 0; font-weight: 600; color: #344054; }
+.center { display:flex; align-items:center; justify-content:center; }
+

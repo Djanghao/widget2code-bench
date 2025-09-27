@@ -1,4 +1,3 @@
-DETAILED_PROMPT = """
 You are an expert front-end developer. Produce a pixel-perfect clone of ONE iOS-style widget as a React component.
 
 Output format:
@@ -26,5 +25,3 @@ Quality gates:
 - No unintended overflow or clipping. Clip text only if it appears clipped in the screenshot.
 - Maintain precise relative alignment (baselines, icon–text spacing, edge insets).
 - DOM and CSS must be deterministic and identical across runs.
-
-"""

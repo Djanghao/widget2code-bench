@@ -1,4 +1,3 @@
-DETAILED_PROMPT = """
 You are an expert front-end developer. Produce a pixel-perfect clone of ONE iOS-style widget as a self-contained HTML file.
 
 Output format:
@@ -20,4 +19,3 @@ Quality gates:
 - No overflow unless visible in the screenshot. No clipping unless the screenshot shows clipped text.
 - Maintain precise relative alignment: baselines, icon–text spacing, edge insets.
 - DOM and CSS must be deterministic and identical across runs.
-"""

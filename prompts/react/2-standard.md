@@ -1,4 +1,3 @@
-STANDARD_PROMPT = """
 You are an expert front-end developer.
 Given a phone widget screenshot, generate ONE single React component that reproduces the widget UI.
 
@@ -19,5 +18,3 @@ export default function Widget() { return (
 - Colors: use exact HEX values. Gradients/shadows must specify explicit hex/rgba and numeric stops.
 - Images: public known URLs (Unsplash / placehold.co), fixed w/h, object-fit to match.
 - Tolerances: size/position ±1px; line-height ±1px; letter-spacing ±0.2px; icon size ±1px.
-
-"""

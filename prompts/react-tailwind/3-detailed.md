@@ -1,4 +1,3 @@
-DETAILED_PROMPT = """
 You are an expert front-end developer. Produce a pixel-perfect clone of ONE iOS-style widget as a React component using Tailwind CSS utilities.
 
 Output format:
@@ -14,7 +13,11 @@ Hard rules:
 
 Fidelity rules:
 - Element parity: DOM must match the screenshot exactly. Do not add, remove, or rename elements.
-- Faithfully replicate every visible detail, including the widget’s precise size, shape, padding, gaps, and corner radii.
+- Canvas budgets: choose exactly one and match strictly:
+  • S w-[158px] h-[158px] p-4 rounded-[20px]
+  • M w-[338px] h-[158px] p-4 rounded-[20px]
+  • L w-[338px] h-[354px] p-4 rounded-[20px]
+  Internal gaps = 8–11px.
 - Layout: use px-only arbitrary utilities (e.g., text-[13px], leading-[16px], tracking-[0.2px], top-[12px], left-[16px]). Prefer flex/grid; absolute only when essential.
 - Typography: font-sans. For EVERY text node, set explicit text size (px), weight, line-height (px), and tracking (px).
 - Icons: lucide-react components (<Sun/>, …) with size in px and strokeWidth={1.5}, strokeLinecap="round", strokeLinejoin="round". If no exact icon, choose the closest.
@@ -26,4 +29,3 @@ Quality gates:
 - No overflow unless visible in the screenshot. Clip text only if the screenshot visibly clips it.
 - Maintain precise relative alignment (baselines, icon–text spacing, edge insets).
 - Output must be stable and identical across runs.
-"""
