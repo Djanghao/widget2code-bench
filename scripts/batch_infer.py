@@ -7,7 +7,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
@@ -28,43 +28,30 @@ def list_images(images_dir: Path) -> List[Path]:
 
 
 def read_prompt_file(path: Path) -> Optional[str]:
+    """Read prompt text from a Markdown file.
+
+    The entire file content is used as the prompt text.
+    """
     try:
-        code = path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8").strip()
     except Exception:
         return None
-    env: Dict[str, str] = {}
-    try:
-        exec(compile(code, str(path), "exec"), env)  # nosec B102
-    except Exception:
-        # Fallback: try to capture first triple-quoted string
-        m = re.search(r'""\"([\s\S]*?)""\"', code)
-        if m:
-            return m.group(1).strip()
-        return None
-    for key in ("DETAILED_PROMPT", "STANDARD_PROMPT", "DEFAULT_PROMPT", "MINIMAL_PROMPT"):
-        if isinstance(env.get(key), str):
-            return env[key].strip()
-    # any top-level str var
-    for k, v in env.items():
-        if isinstance(v, str) and k.isupper() and k.endswith("_PROMPT"):
-            return v.strip()
-    return None
 
 
 def collect_prompts(prompts_root: Path, includes: Optional[List[str]], excludes: Optional[List[str]]) -> List[Tuple[str, Path, str]]:
     items: List[Tuple[str, Path, str]] = []
     for category in sorted([p for p in prompts_root.iterdir() if p.is_dir()]):
-        for py in sorted(category.glob("*.py")):
-            rel = py.relative_to(prompts_root)
+        for md in sorted(category.glob("*.md")):
+            rel = md.relative_to(prompts_root)
             rel_str = str(rel)
             if includes and not any(fnmatch(rel_str, pat) for pat in includes):
                 continue
             if excludes and any(fnmatch(rel_str, pat) for pat in excludes):
                 continue
-            prompt_text = read_prompt_file(py)
+            prompt_text = read_prompt_file(md)
             if not prompt_text:
                 continue
-            items.append((category.name, py, prompt_text))
+            items.append((category.name, md, prompt_text))
     return items
 
 
@@ -158,7 +145,7 @@ def run_one(
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Batch widget2code inference using provider-hub")
     p.add_argument("--images-dir", required=True, help="Directory with images")
-    p.add_argument("--prompts-root", default=str(Path("prompts").resolve()), help="Prompts root directory")
+    p.add_argument("--prompts-root", default=str(Path("prompts").resolve()), help="Prompts root directory (expects .md files)")
     p.add_argument("--results-root", default=str(Path("results").resolve()), help="Results root directory")
     p.add_argument("--experiment", required=True, help="Experiment name suffix")
     p.add_argument("--threads", type=int, default=os.cpu_count() or 4, help="Max concurrent workers")
