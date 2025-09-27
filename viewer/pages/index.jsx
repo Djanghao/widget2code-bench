@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Layout, Typography, Input, List, Avatar, Empty, Spin, Flex, Divider } from "antd";
+import { Layout, Typography, Input, List, Avatar, Empty, Spin, Flex, Divider, Modal, Button } from "antd";
+import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
 import RunPicker from "../components/RunPicker";
 import PreviewCard from "../components/PreviewCard";
 
@@ -15,6 +16,8 @@ export default function Home() {
   const [loadingImages, setLoadingImages] = useState(false);
   const [loadingResults, setLoadingResults] = useState(false);
   const [results, setResults] = useState({});
+  const [sourceModalOpen, setSourceModalOpen] = useState(false);
+  const [siderCollapsed, setSiderCollapsed] = useState(false);
 
   useEffect(() => {
     fetch("/api/runs").then((r) => r.json()).then((d) => {
@@ -51,6 +54,12 @@ export default function Home() {
     return images.filter((i) => i.id.toLowerCase().includes(f));
   }, [images, filter]);
 
+  const selectedItem = useMemo(() => images.find((i) => i.id === selected), [images, selected]);
+  const selectedSource = useMemo(() => {
+    if (!run || !selectedItem || !selectedItem.source) return null;
+    return `/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(selectedItem.source)}`;
+  }, [run, selectedItem]);
+
   return (
     <Layout className="layout">
       <Header style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -58,12 +67,53 @@ export default function Home() {
         <div style={{ flex: 1 }} />
         <RunPicker runs={runs} value={run} onChange={setRun} />
       </Header>
-      <Layout>
-        <Sider width={320} style={{ background: "#fff", borderRight: "1px solid #eef0f3" }}>
-          <div style={{ padding: 12 }}>
-            <Input.Search placeholder="Filter images" allowClear onChange={(e) => setFilter(e.target.value)} />
-          </div>
-          <div style={{ height: "calc(100vh - 112px)", overflow: "auto", paddingInline: 8 }}>
+      <Layout style={{ height: "calc(100vh - 64px)", position: "relative" }}>
+        {siderCollapsed ? (
+          <Button
+            className="siderFloatToggle"
+            type="default"
+            shape="circle"
+            size="small"
+            icon={<MenuUnfoldOutlined />}
+            onClick={() => setSiderCollapsed(false)}
+            aria-label="Expand sidebar"
+            style={{ position: "absolute", left: 12, top: 12, zIndex: 20 }}
+          />
+        ) : null}
+        <Sider
+          width={320}
+          collapsedWidth={0}
+          collapsible
+          collapsed={siderCollapsed}
+          trigger={null}
+          className={`appSider${siderCollapsed ? " appSiderCollapsed" : ""}`}
+        >
+          {siderCollapsed ? (
+            <div className="siderHeader">
+              <Button
+                type="text"
+                icon={<MenuUnfoldOutlined />}
+                onClick={() => setSiderCollapsed(false)}
+                aria-label="Expand sidebar"
+              />
+            </div>
+          ) : (
+            <div className="siderHeader" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Button
+                type="text"
+                icon={<MenuFoldOutlined />}
+                onClick={() => setSiderCollapsed(true)}
+                aria-label="Collapse sidebar"
+              />
+              <Input.Search
+                placeholder="Filter images"
+                allowClear
+                onChange={(e) => setFilter(e.target.value)}
+                value={filter}
+              />
+            </div>
+          )}
+          <div className="siderScroll">
             {loadingImages ? (
               <div className="center" style={{ height: 200 }}><Spin /></div>
             ) : filtered.length ? (
@@ -93,7 +143,7 @@ export default function Home() {
             )}
           </div>
         </Sider>
-        <Content style={{ padding: 16 }}>
+        <Content style={{ padding: 16, overflow: "auto" }}>
           {!selected ? (
             <Empty description="Select an image" />
           ) : loadingResults ? (
@@ -102,16 +152,14 @@ export default function Home() {
             <div>
               <Flex align="center" gap={12} wrap="wrap" style={{ marginBottom: 8 }}>
                 <Title level={5} style={{ margin: 0 }}>{selected}</Title>
-                {(() => {
-                  const src = images.find((i) => i.id === selected)?.source;
-                  return src ? (
-                    <img
-                      alt="source"
-                      src={`/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(src)}`}
-                      style={{ height: 64, borderRadius: 8, border: "1px solid #eef0f3", background: "#fff" }}
-                    />
-                  ) : null;
-                })()}
+                {selectedSource ? (
+                  <img
+                    alt="source"
+                    src={selectedSource}
+                    style={{ height: 64, borderRadius: 8, border: "1px solid #eef0f3", background: "#fff", cursor: "pointer" }}
+                    onClick={() => setSourceModalOpen(true)}
+                  />
+                ) : null}
               </Flex>
               <Divider style={{ margin: "8px 0 12px" }} />
               {Object.keys(results).length === 0 ? (
@@ -122,7 +170,14 @@ export default function Home() {
                     <div className="gridHeader">{cat}</div>
                     <div className="grid">
                       {results[cat].map((it) => (
-                        <PreviewCard key={it.name} title={it.name} ext={it.ext} code={it.code} />
+                        <PreviewCard
+                          key={it.name}
+                          title={it.name}
+                          ext={it.ext}
+                          code={it.code}
+                          prompt={it.prompt}
+                          sourceUrl={selectedSource}
+                        />
                       ))}
                     </div>
                   </div>
@@ -132,7 +187,22 @@ export default function Home() {
           )}
         </Content>
       </Layout>
+      <Modal
+        open={sourceModalOpen}
+        onCancel={() => setSourceModalOpen(false)}
+        footer={null}
+        width={900}
+        destroyOnClose
+        centered
+      >
+        {selectedSource ? (
+          <img
+            alt="source"
+            src={selectedSource}
+            style={{ width: "100%", maxHeight: "70vh", objectFit: "contain", borderRadius: 8 }}
+          />
+        ) : null}
+      </Modal>
     </Layout>
   );
 }
-

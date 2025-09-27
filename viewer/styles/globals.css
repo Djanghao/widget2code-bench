@@ -2,9 +2,25 @@
 html, body, #__next { height: 100%; }
 body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
 .layout { height: 100vh; }
-.code { white-space: pre; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.5; overflow: auto; background: #0b0b0b; color: #e5e7eb; padding: 12px; border-radius: 8px; }
 .iframeWrap { background: #f6f7f9; border: 1px solid #eef0f3; border-radius: 10px; padding: 8px; }
+.codeEditor { border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; background: #0f172a; }
+.codeEditorToolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #111827; color: #9ca3af; }
+.codeEditorToolbar .ant-btn { color: #e5e7eb; }
+.codeEditorToolbar .ant-btn[disabled] { color: rgba(229, 231, 235, 0.45); }
+.codeEditorDots { display: flex; gap: 6px; }
+.codeEditorDots span { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.codeEditorDots span:nth-child(1) { background: #ef4444; }
+.codeEditorDots span:nth-child(2) { background: #f59e0b; }
+.codeEditorDots span:nth-child(3) { background: #10b981; }
+.codeEditorBody { display: flex; max-height: 420px; overflow-y: auto; overflow-x: hidden; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.6; }
+.codeEditorGutter { margin: 0; padding: 12px 12px 12px 16px; background: #111827; color: #4b5563; text-align: right; user-select: none; min-width: 40px; flex-shrink: 0; }
+.codeEditorGutter span { display: block; }
+.codeEditorContent { margin: 0; padding: 12px 16px 12px 12px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; color: #e5e7eb; min-width: 0; flex: 1; }
+.codeEditorEmpty { color: rgba(229, 231, 235, 0.6); font-style: italic; }
+.appSider { background: #fff !important; border-right: 1px solid #eef0f3; display: flex; flex-direction: column; }
+.appSider .siderHeader { padding: 12px; border-bottom: 1px solid #eef0f3; background: #fff; }
+.appSider .siderScroll { flex: 1; overflow-y: auto; padding: 8px; }
+.appSiderCollapsed .siderHeader { display: flex; align-items: center; justify-content: center; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .gridHeader { margin: 8px 0; font-weight: 600; color: #344054; }
 .center { display:flex; align-items:center; justify-content:center; }
-

@@ -13,6 +13,8 @@ export default function handler(req, res) {
     res.status(404).json({ error: "not found" });
     return;
   }
+  const runMeta = readRunMeta(path.join(RESULTS_ROOT, run, "run.meta.json"));
+  const promptsRoot = runMeta?.prompts_root;
   const categories = {};
   for (const d of fs.readdirSync(base, { withFileTypes: true })) {
     if (d.isDirectory()) {
@@ -28,6 +30,7 @@ export default function handler(req, res) {
           ext: path.extname(f).toLowerCase(),
           path: path.relative(path.join(RESULTS_ROOT, run), f).replaceAll("\\", "/"),
           code: readText(f),
+          prompt: readPrompt(promptsRoot, cat, path.basename(f, path.extname(f))),
         }))
         .sort((a, b) => (a.name > b.name ? 1 : -1));
     }
@@ -44,5 +47,27 @@ function readText(p) {
     return fs.readFileSync(p, "utf8");
   } catch (_) {
     return "";
+  }
+}
+
+function readRunMeta(p) {
+  try {
+    const raw = fs.readFileSync(p, "utf8");
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function readPrompt(root, category, name) {
+  if (!root || !category || !name) return null;
+  if (category.includes("..") || category.includes("\\")) return null;
+  const base = path.resolve(root);
+  const file = path.resolve(base, category, `${name}.md`);
+  if (!file.startsWith(base)) return null;
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (_) {
+    return null;
   }
 }

@@ -1,9 +1,10 @@
-import { Card, Tabs, Typography } from "antd";
-import { useMemo } from "react";
+import { Card, Tabs, Typography, Button, Modal, message, Tooltip } from "antd";
+import { useMemo, useState } from "react";
 
 const { Text } = Typography;
 
-export default function PreviewCard({ title, ext, code }) {
+export default function PreviewCard({ title, ext, code, prompt, sourceUrl }) {
+  const [compareOpen, setCompareOpen] = useState(false);
   const htmlDoc = useMemo(() => {
     if (ext === ".html") return code;
     if (ext !== ".jsx") return `<!doctype html><html><body><pre style="font:12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space:pre-wrap; padding:12px;">${escapeHtml(code||"")}</pre></body></html>`;
@@ -44,10 +45,19 @@ try {
 </html>`;
   }, [code, ext]);
 
+  const promptText = prompt ?? "";
+
   return (
     <Card size="small" title={<Text strong>{title}</Text>} bodyStyle={{ padding: 12 }}>
       <Tabs
         size="small"
+        tabBarExtraContent={{
+          right: (
+            <Button size="small" onClick={() => setCompareOpen(true)} disabled={!sourceUrl}>
+              Compare
+            </Button>
+          ),
+        }}
         items={[
           {
             key: "render",
@@ -67,14 +77,118 @@ try {
           {
             key: "code",
             label: "Code",
-            children: <pre className="code">{code}</pre>,
+            children: (
+              <CodeViewer
+                label="Code"
+                content={code || ""}
+                placeholder="No code available"
+                copyMessage="Code copied"
+              />
+            ),
+          },
+          {
+            key: "prompt",
+            label: "Prompt",
+            children: (
+              <CodeViewer
+                label="Prompt"
+                content={promptText}
+                placeholder="No prompt available"
+                copyMessage="Prompt copied"
+              />
+            ),
           },
         ]}
       />
+      <Modal
+        open={compareOpen}
+        onCancel={() => setCompareOpen(false)}
+        footer={null}
+        width={1000}
+        destroyOnClose
+        centered
+        title="Compare"
+      >
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <Text strong style={{ display: "block", marginBottom: 8 }}>Original</Text>
+            {sourceUrl ? (
+              <img
+                alt="original"
+                src={sourceUrl}
+                style={{ width: "100%", maxHeight: "60vh", objectFit: "contain", borderRadius: 8, border: "1px solid #eef0f3" }}
+              />
+            ) : (
+              <div className="center" style={{ height: 200 }}>No source image</div>
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 280 }}>
+            <Text strong style={{ display: "block", marginBottom: 8 }}>Render</Text>
+            <div className="iframeWrap" style={{ border: "1px solid #eef0f3", borderRadius: 8 }}>
+              <iframe
+                title={`compare-${title}`}
+                srcDoc={htmlDoc}
+                style={{ width: "100%", height: 420, border: 0, borderRadius: 8, background: "#fff" }}
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          </div>
+        </div>
+      </Modal>
     </Card>
   );
 }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+}
+
+function CodeViewer({ label, content, placeholder, copyMessage }) {
+  const normalized = useMemo(() => (content ?? "").replace(/\r\n/g, "\n"), [content]);
+  const hasContent = normalized.length > 0;
+  const lines = useMemo(() => (hasContent ? normalized.split("\n") : [""]), [normalized, hasContent]);
+
+  const handleCopy = async () => {
+    if (!hasContent) return;
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        message.warning("Clipboard unavailable");
+        return;
+      }
+      await navigator.clipboard.writeText(normalized);
+      message.success(copyMessage || "Copied");
+    } catch (err) {
+      console.error("copy failed", err);
+      message.error("Copy failed");
+    }
+  };
+
+  return (
+    <div className="codeEditor">
+      <div className="codeEditorToolbar">
+        <div className="codeEditorDots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <Text type="secondary" style={{ fontSize: 12 }}>{label}</Text>
+        <Tooltip title={hasContent ? "Copy" : "Nothing to copy"}>
+          <Button size="small" type="text" onClick={handleCopy} disabled={!hasContent}>
+            Copy
+          </Button>
+        </Tooltip>
+      </div>
+      <div className="codeEditorBody">
+        <pre className="codeEditorGutter" aria-hidden="true">
+          {lines.map((_, idx) => (
+            <span key={idx}>{idx + 1}</span>
+          ))}
+        </pre>
+        <pre className={`codeEditorContent${hasContent ? "" : " codeEditorEmpty"}`}>
+          {hasContent ? normalized : placeholder || ""}
+        </pre>
+      </div>
+    </div>
+  );
 }
