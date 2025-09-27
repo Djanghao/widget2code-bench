@@ -94,21 +94,6 @@ def decide_extension(code: str) -> str:
         return ".jsx"
     return ".txt"
 
-
-def make_llm(model: str, temperature: float, top_p: float, max_tokens: int, timeout: int, thinking: bool) -> LLM:
-    tkw = True if thinking else False
-    if model.startswith("doubao") and thinking:
-        tkw = {"type": "enabled"}
-    return LLM(
-        model=model,
-        temperature=temperature,
-        top_p=top_p,
-        max_tokens=max_tokens,
-        timeout=timeout,
-        thinking=tkw,
-    )
-
-
 def run_one(
     image_path: Path,
     category: str,
@@ -120,13 +105,20 @@ def run_one(
     top_p: float,
     max_tokens: int,
     timeout: int,
-    thinking: bool,
+    thinking: Optional[bool],
 ) -> Tuple[Path, Optional[str], Optional[str]]:
-    llm = make_llm(model, temperature, top_p, max_tokens, timeout, thinking)
+    llm = LLM(
+        model=model,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+        timeout=timeout,
+        thinking=thinking,
+    )
     img = prepare_image_content(str(image_path))
     messages = [ChatMessage(role="user", content=[{"type": "text", "text": prompt_text}, img])]
     try:
-        resp = llm.chat(messages)
+        resp = llm.chat(messages, stream=False)
         raw = resp.content if hasattr(resp, "content") else str(resp)
     except Exception as e:
         return (prompt_file, None, f"ERROR: {e}")
@@ -154,7 +146,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--top-p", type=float, default=0.9)
     p.add_argument("--max-tokens", type=int, default=1500)
     p.add_argument("--timeout", type=int, default=90)
-    p.add_argument("--thinking", action="store_true", help="Enable provider thinking when supported")
+    p.add_argument("--thinking", action="store_true", default=None, help="Enable provider thinking when supported")
     p.add_argument("--include", nargs="*", help="Optional glob filters relative to prompts root, e.g. 'react/*' 'html/1-*' ")
     p.add_argument("--exclude", nargs="*", help="Optional glob filters to exclude")
     p.add_argument("--suffix", default="", help="Optional extra suffix for run directory name")
@@ -190,7 +182,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "top_p": args.top_p,
         "max_tokens": args.max_tokens,
         "timeout": args.timeout,
-        "thinking": bool(args.thinking),
+        "thinking": args.thinking,
         "images_dir": str(images_dir),
         "prompts_root": str(prompts_root),
         "include": args.include,
