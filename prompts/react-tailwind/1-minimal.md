@@ -4,11 +4,14 @@ Given a phone widget screenshot, generate ONE single React component using Tailw
 Rules:
 - Output ONLY:
 
+<zero or more import lines for required components>
+
 export default function Widget() { return (
   /* JSX */
 ); }
 
-- No imports, no comments, no extra text.
+- No comments, no extra text.
+- Always import all external components used in the JSX, and nothing else.
 - Root element must be <div className="widget …"> … </div>.
 - Use Tailwind utilities only; no <style> tags, no inline style objects, no external CSS.
 - Choose one canvas and match its size exactly:

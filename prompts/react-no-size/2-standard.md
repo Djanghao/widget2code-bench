@@ -3,12 +3,15 @@ Given a phone widget screenshot, generate ONE single React component that reprod
 
 Rules:
 - Output ONLY:
+- 
+<zero or more import lines for required components>
 
 export default function Widget() { return (
   /* JSX */
 ); }
 
-- No imports, no comments, no extra text. Deterministic: no state/effects/timers/fetch/randomness/dates.
+- No comments, no extra text. Deterministic: no state/effects/timers/fetch/randomness.
+- Always import all external components used in the JSX, and nothing else.
 - Root: exactly one <div className="widget"> … </div>.
 - Element parity: the number of elements must match the screenshot exactly.
 - Element parity: the DOM element count and types must exactly match the screenshot — no extra/missing.

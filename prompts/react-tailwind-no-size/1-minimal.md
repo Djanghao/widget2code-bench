@@ -3,10 +3,13 @@ Generate ONE single React component using Tailwind CSSthat reproduces the widget
 Rules:
 - Output ONLY:
 
+<zero or more import lines for required components>
+
 export default function Widget() { return (
   /* JSX */
 ); }
 
-- No imports, no comments, no extra text.
+- No comments, no extra text.
+- Always import all external components used in the JSX, and nothing else.
 - Root element must be <div className="widget …"> … </div>.
 - Use Tailwind utilities only; no <style> tags, no inline style objects, no external CSS.
