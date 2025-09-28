@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from bs4 import BeautifulSoup
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -94,6 +96,18 @@ def decide_extension(code: str) -> str:
         return ".jsx"
     return ".txt"
 
+
+def prettify_html(code: str) -> str:
+    """Format HTML using BeautifulSoup while failing gracefully."""
+    try:
+        soup = BeautifulSoup(code, "html.parser")
+        pretty = soup.prettify()
+    except Exception:
+        return code
+    if not pretty.endswith("\n"):
+        pretty += "\n"
+    return pretty
+
 def run_one(
     image_path: Path,
     category: str,
@@ -130,8 +144,11 @@ def run_one(
     expected_ext = ".html" if category.startswith("html") else ".jsx"
     file_ext = ext if ext in (".html", ".jsx") else expected_ext
     out_file = out_cat / f"{base_name}{file_ext}"
-    out_file.write_text(code, encoding="utf-8")
-    return (out_file, code[:64], None)
+    formatted_code = code
+    if file_ext == ".html":
+        formatted_code = prettify_html(formatted_code)
+    out_file.write_text(formatted_code, encoding="utf-8")
+    return (out_file, formatted_code[:64], None)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
