@@ -147,7 +147,6 @@ function escapeHtml(s) {
 function CodeViewer({ label, content, placeholder, copyMessage }) {
   const normalized = useMemo(() => (content ?? "").replace(/\r\n/g, "\n"), [content]);
   const hasContent = normalized.length > 0;
-  const lines = useMemo(() => (hasContent ? normalized.split("\n") : [""]), [normalized, hasContent]);
 
   const handleCopy = async () => {
     if (!hasContent) return;
@@ -180,11 +179,6 @@ function CodeViewer({ label, content, placeholder, copyMessage }) {
         </Tooltip>
       </div>
       <div className="codeEditorBody">
-        <pre className="codeEditorGutter" aria-hidden="true">
-          {lines.map((_, idx) => (
-            <span key={idx}>{idx + 1}</span>
-          ))}
-        </pre>
         <pre className={`codeEditorContent${hasContent ? "" : " codeEditorEmpty"}`}>
           {hasContent ? normalized : placeholder || ""}
         </pre>
