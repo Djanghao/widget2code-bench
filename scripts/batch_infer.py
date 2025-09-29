@@ -2,6 +2,7 @@
 import argparse
 import concurrent.futures as futures
 import datetime as dt
+from zoneinfo import ZoneInfo
 import json
 import os
 import re
@@ -187,7 +188,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("No prompts collected", file=sys.stderr)
         return 2
 
-    ts = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    ts = dt.datetime.now(ZoneInfo("America/Toronto")).strftime("%Y%m%d-%H%M%S")
     run_dir_name = f"{ts}-{args.experiment}{('-' + args.suffix) if args.suffix else ''}"
     run_dir = results_root / run_dir_name
     run_dir.mkdir(parents=True, exist_ok=True)
