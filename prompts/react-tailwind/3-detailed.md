@@ -24,7 +24,7 @@ Fidelity rules:
   Internal gaps = 8–11px.
 - Layout: use px-only arbitrary utilities (e.g., text-[13px], leading-[16px], tracking-[0.2px], top-[12px], left-[16px]). Prefer flex/grid; absolute only when essential.
 - Typography: font-sans. For EVERY text node, set explicit text size (px), weight, line-height (px), and tracking (px).
-- Icons: lucide-react components (<Sun/>, …) with size in px and strokeWidth={1.5}, strokeLinecap="round", strokeLinejoin="round". If no exact icon, choose the closest.
+- Icons: lucide-react components (<Sun/>, …) with size in px and strokeWidth={1.5}, strokeLinecap="round", strokeLinejoin="round". If no exact icon, choose the closest. Import directly from "lucide-react" using named imports only. Example: import { Sun, Moon } from "lucide-react";
 - Colors/effects: exact hex via arbitrary utilities (bg-[#xxxxxx], text-[#xxxxxx], shadow-[...]). Gradients must list explicit stops. Shadows must use px/rgb(a).
 - Images: only public known URLs (Unsplash/placehold.co) with fixed w/h utilities and object-cover to match crop.
 - Tolerances: position/size ±1px; line-height ±1px; letter-spacing ±0.2px; icon ±1px; colors must be exact or visually indistinguishable.

@@ -24,7 +24,7 @@ Fidelity rules:
   Each must use safe padding 16px, internal gaps 8–11px, and outer corner radius 20px.
 - Layout: px units only; use flex/grid; absolute only if essential. Snap spacing to integer px.
 - Typography: iOS system stack (-apple-system,…). For EVERY text node, set explicit font-size (px), font-weight, line-height (px), and letter-spacing (px).
-- Icons: lucide-react components (<Sun/>, …) with explicit size (px), strokeWidth={1.5}, strokeLinecap="round", strokeLinejoin="round". If no exact match, choose the closest semantic icon only.
+- Icons: lucide-react components (<Sun/>, …) with explicit size (px), strokeWidth={1.5}, strokeLinecap="round", strokeLinejoin="round". If no exact match, choose the closest semantic icon only. Import directly from "lucide-react" using named imports only. Example: import { Sun, Moon } from "lucide-react";
 - Colors: exact HEX values. Define CSS variables on .widget (--bg, --fg, --accent, etc.). Gradients require explicit stops; shadows require px/rgb(a).
 - Images: only public known URLs (Unsplash/placehold.co) with fixed w/h and object-fit to match crop.
 - Tolerances: size/position ±1px; line-height ±1px; letter-spacing ±0.2px; icon size ±1px; colors must be exact or indistinguishable.

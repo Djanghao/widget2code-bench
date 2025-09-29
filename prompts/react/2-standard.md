@@ -17,7 +17,7 @@ export default function Widget() { return (
 - Element parity: the DOM element count and types must exactly match the screenshot — no extra/missing.
 - Layout: px units only; prefer flex/grid; absolute only if necessary.
 - Typography: system stack fonts. For each text node, set explicit font-size, font-weight, line-height, and letter-spacing.
-- Icons: lucide-react components (<Sun/>, <Moon/>, etc.) with explicit size in px and strokeWidth={1.5}, rounded caps/joins.
+- Icons: lucide-react components (<Sun/>, <Moon/>, etc.) with explicit size in px and strokeWidth={1.5}, rounded caps/joins. Import directly from "lucide-react" using named imports only. Example: import { Sun, Moon } from "lucide-react";
 - Colors: use exact HEX values. Gradients/shadows must specify explicit hex/rgba and numeric stops.
 - Images: public known URLs (Unsplash / placehold.co), fixed w/h, object-fit to match.
 - Tolerances: size/position ±1px; line-height ±1px; letter-spacing ±0.2px; icon size ±1px.
