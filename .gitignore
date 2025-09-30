@@ -7,6 +7,7 @@
 # Build artifacts and deps
 viewer/.next/
 viewer/node_modules/
+viewer/.cache/
 
 # Generated results
 results/

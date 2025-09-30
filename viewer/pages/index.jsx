@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Layout, Typography, Input, List, Avatar, Empty, Spin, Flex, Divider, Modal, Button, Segmented } from "antd";
+import { Typography, Input, Empty, Spin, Flex, Divider, Modal, Button } from "antd";
 import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import RunPicker from "../components/RunPicker";
 import PreviewCard from "../components/PreviewCard";
 
-const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
 
 export default function Home() {
@@ -104,26 +103,36 @@ export default function Home() {
   }, [run, selectedItem]);
 
   return (
-    <Layout className="layout">
-      <Header style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 24px" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
+      <header style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "0 24px",
+        height: 64,
+        borderBottom: "1px solid #f0f0f0",
+        background: "#001529",
+        flexShrink: 0
+      }}>
         <Button
           type="text"
           icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           onClick={() => setSiderCollapsed((v) => !v)}
           aria-label={siderCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{ color: "#fff" }}
         />
-        <Title level={4} style={{ color: "#0f1419", margin: 0, fontWeight: 700 }}>Widget2Code</Title>
+        <Title level={4} style={{ color: "#fff", margin: 0, fontWeight: 700 }}>Widget2Code</Title>
         <div style={{ display: "flex", gap: 8, marginLeft: 16 }}>
           <Link href="/" passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }}>
-              <Button type="primary" icon={<EyeOutlined />}>
+              <Button type="primary" icon={<EyeOutlined />} style={{ background: "#1677ff", borderColor: "#1677ff" }}>
                 Viewer
               </Button>
             </a>
           </Link>
           <Link href="/playground" passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }}>
-              <Button type="default" icon={<ExperimentOutlined />}>
+              <Button icon={<ExperimentOutlined />} style={{ background: "#434343", borderColor: "#434343", color: "#fff" }}>
                 Playground
               </Button>
             </a>
@@ -131,61 +140,142 @@ export default function Home() {
         </div>
         <div style={{ flex: 1 }} />
         <RunPicker runs={runs} value={run} onChange={setRun} />
-      </Header>
-      <Layout style={{ height: "calc(100vh - 64px)", position: "relative" }}>
-        <Sider
-          width={320}
-          collapsedWidth={0}
-          collapsible
-          collapsed={siderCollapsed}
-          trigger={null}
-          className={`appSider${siderCollapsed ? " appSiderCollapsed" : ""}`}
-        >
-          <div className="siderHeader" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Input
-              placeholder="Filter images"
-              allowClear
-              onChange={(e) => setFilter(e.target.value)}
-              value={filter}
-            />
-          </div>
-          <div className="siderScroll">
-            {loadingImages ? (
-              <div className="center" style={{ height: 200 }}><Spin /></div>
-            ) : filtered.length ? (
-              <List
-                dataSource={filtered}
-                renderItem={(item) => (
-                  <List.Item
-                    onClick={() => setSelected(item.id)}
-                    style={{ cursor: "pointer", background: selected === item.id ? "#f0f7ff" : undefined, borderRadius: 8, margin: 4, padding: 8 }}
-                  >
-                    <List.Item.Meta
-                      avatar={
-                        item.source ? (
-                          <Avatar shape="square" size={48} src={`/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(item.source)}`} />
-                        ) : (
-                          <Avatar shape="square" size={48}>?</Avatar>
-                        )
-                      }
-                      title={<Text>{item.id}</Text>}
-                      description={item.source ? <Text type="secondary" style={{ fontSize: 12 }}>{item.source.split("/").pop()}</Text> : null}
-                    />
-                  </List.Item>
-                )}
+      </header>
+
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        {!siderCollapsed && (
+          <aside style={{
+            width: 320,
+            background: "#fff",
+            borderRight: "1px solid #e8e8e8",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            boxShadow: "2px 0 8px rgba(0,0,0,0.05)"
+          }}>
+            <div style={{
+              padding: "16px 16px 12px",
+              flexShrink: 0
+            }}>
+              <Input
+                placeholder="Search images..."
+                allowClear
+                onChange={(e) => setFilter(e.target.value)}
+                value={filter}
+                size="large"
+                style={{ borderRadius: 8 }}
               />
-            ) : (
-              <Empty description="No images" style={{ marginTop: 48 }} />
-            )}
-          </div>
-        </Sider>
-        <Content style={{ padding: 16, overflow: "auto" }}>
+            </div>
+
+            <div style={{
+              flex: 1,
+              overflow: "auto",
+              padding: "0 12px 12px"
+            }}>
+              {loadingImages ? (
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
+                  <Spin />
+                </div>
+              ) : filtered.length ? (
+                filtered.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => setSelected(item.id)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: 12,
+                      marginBottom: 8,
+                      cursor: "pointer",
+                      background: selected === item.id ? "#f0f7ff" : "#fafafa",
+                      border: selected === item.id ? "2px solid #1677ff" : "2px solid transparent",
+                      borderRadius: 12,
+                      transition: "all 0.2s",
+                      boxShadow: selected === item.id ? "0 2px 8px rgba(22,119,255,0.15)" : "none"
+                    }}
+                    onMouseEnter={(e) => {
+                      if (selected !== item.id) {
+                        e.currentTarget.style.background = "#f5f5f5";
+                        e.currentTarget.style.transform = "translateX(2px)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (selected !== item.id) {
+                        e.currentTarget.style.background = "#fafafa";
+                        e.currentTarget.style.transform = "translateX(0)";
+                      }
+                    }}
+                  >
+                    <div style={{
+                      width: 56,
+                      height: 56,
+                      flexShrink: 0,
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      background: "#fff",
+                      border: "1px solid #e8e8e8",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}>
+                      {item.source ? (
+                        <img
+                          src={`/api/thumbnail?run=${encodeURIComponent(run)}&file=${encodeURIComponent(item.source)}`}
+                          alt={item.id}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : (
+                        <Text type="secondary" style={{ fontSize: 18, fontWeight: 500 }}>?</Text>
+                      )}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontWeight: 500,
+                        fontSize: 14,
+                        color: selected === item.id ? "#1677ff" : "#262626",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        marginBottom: 4
+                      }}>
+                        {item.id}
+                      </div>
+                      {item.source && (
+                        <Text type="secondary" style={{
+                          fontSize: 12,
+                          display: "block",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap"
+                        }}>
+                          {item.source.split("/").pop()}
+                        </Text>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <Empty description="No images" style={{ marginTop: 48 }} />
+              )}
+            </div>
+          </aside>
+        )}
+
+        <main style={{
+          flex: 1,
+          overflow: "auto",
+          padding: 16,
+          background: "#fff"
+        }}>
           {!selected ? (
             <Empty description="Select an image" />
           ) : loadingResults ? (
-            <div className="center" style={{ height: 240 }}><Spin /></div>
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 240 }}>
+              <Spin />
+            </div>
           ) : renderStatus !== 'ready' ? (
-            <div className="center" style={{ height: 240 }}>
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 240 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <Spin />
                 <Text type="secondary">
@@ -231,14 +321,14 @@ export default function Home() {
               )}
             </div>
           )}
-        </Content>
-      </Layout>
+        </main>
+      </div>
+
       <Modal
         open={sourceModalOpen}
         onCancel={() => setSourceModalOpen(false)}
         footer={null}
         width={900}
-        destroyOnClose
         centered
       >
         {selectedSource ? (
@@ -249,6 +339,6 @@ export default function Home() {
           />
         ) : null}
       </Modal>
-    </Layout>
+    </div>
   );
 }

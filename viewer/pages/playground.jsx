@@ -183,8 +183,9 @@ export default function Playground() {
           icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           onClick={() => setSiderCollapsed((v) => !v)}
           aria-label={siderCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          style={{ color: '#fff' }}
         />
-        <Title level={4} style={{ color: '#0f1419', margin: 0, fontWeight: 700 }}>Widget2Code</Title>
+        <Title level={4} style={{ color: '#fff', margin: 0, fontWeight: 700 }}>Widget2Code</Title>
         <div style={{ display: 'flex', gap: 8, marginLeft: 16 }}>
           <Link href="/" passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }}>
