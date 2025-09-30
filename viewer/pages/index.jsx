@@ -18,6 +18,7 @@ export default function Home() {
   const [results, setResults] = useState({});
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
+  const [renderStatus, setRenderStatus] = useState('idle'); // idle | checking | rendering | ready
 
   useEffect(() => {
     fetch("/api/runs").then((r) => r.json()).then((d) => {
@@ -47,13 +48,46 @@ export default function Home() {
       .then((d) => setResults(d.categories || {}))
       .finally(() => setLoadingResults(false));
 
-    fetch('/api/batch-render', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ run, image: selected })
-    }).catch((err) => {
-      console.error('Batch render failed:', err);
-    });
+    // Check PNG completeness first; if incomplete, trigger batch render and wait
+    const doCheckAndMaybeRender = async () => {
+      try {
+        setRenderStatus('checking');
+        const checkRes = await fetch(`/api/check-pngs?run=${encodeURIComponent(run)}&image=${encodeURIComponent(selected)}`);
+        const check = await checkRes.json();
+        if (check && check.complete) {
+          console.log(`[viewer] PNG completeness: complete (total=${check.total})`);
+          setRenderStatus('ready');
+          return;
+        } else {
+          console.log(`[viewer] PNG completeness: incomplete (missing=${check?.missingCount ?? 'unknown'}). Starting batch render...`);
+        }
+
+        setRenderStatus('rendering');
+        await fetch('/api/batch-render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ run, image: selected })
+        });
+
+        // After batch render completes, verify PNGs exist; poll a bit in case of FS lag
+        for (let i = 0; i < 20; i++) { // up to ~10s
+          const r = await fetch(`/api/check-pngs?run=${encodeURIComponent(run)}&image=${encodeURIComponent(selected)}`);
+          const d = await r.json();
+          if (d && d.complete) {
+            console.log('[viewer] Batch render complete. PNGs ready.');
+            setRenderStatus('ready');
+            return;
+          }
+          await new Promise((res) => setTimeout(res, 500));
+        }
+        console.log('[viewer] PNGs not fully ready after waiting; proceeding anyway.');
+        setRenderStatus('ready');
+      } catch (err) {
+        console.error('Render readiness check failed:', err);
+        setRenderStatus('ready');
+      }
+    };
+    doCheckAndMaybeRender();
   }, [run, selected]);
 
   const filtered = useMemo(() => {
@@ -156,6 +190,15 @@ export default function Home() {
             <Empty description="Select an image" />
           ) : loadingResults ? (
             <div className="center" style={{ height: 240 }}><Spin /></div>
+          ) : renderStatus !== 'ready' ? (
+            <div className="center" style={{ height: 240 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Spin />
+                <Text type="secondary">
+                  {renderStatus === 'checking' ? 'Checking PNGs...' : 'Rendering PNGs...'}
+                </Text>
+              </div>
+            </div>
           ) : (
             <div>
               <Flex align="center" gap={12} wrap="wrap" style={{ marginBottom: 8 }}>
