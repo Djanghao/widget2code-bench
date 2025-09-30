@@ -1,0 +1,209 @@
+#!/usr/bin/env node
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import esbuild from 'esbuild';
+import React from 'react';
+import ReactDOMServer from 'react-dom/server';
+import { chromium } from 'playwright';
+
+function log(...args) { console.log('[render-jsx-batch]', ...args); }
+
+function normalizeJsxToTemp(inputPath, tmpDir) {
+  const src = fs.readFileSync(inputPath, 'utf8');
+  const replaced = src.replace(/<style>(?!\s*{)([\s\S]*?)<\/style>/g, (m, css) => {
+    const safe = css.replace(/`/g, '\\`');
+    return `<style>{\`${safe}\`}</style>`;
+  });
+  const out = path.join(tmpDir, path.basename(inputPath));
+  fs.writeFileSync(out, replaced, 'utf8');
+  return out;
+}
+
+async function buildForNode(inputPath, outFile) {
+  await esbuild.build({
+    entryPoints: [inputPath],
+    outfile: outFile,
+    bundle: true,
+    platform: 'node',
+    format: 'esm',
+    target: ['node18'],
+    jsx: 'automatic',
+    jsxImportSource: 'react',
+    sourcemap: false,
+    logLevel: 'silent',
+    absWorkingDir: process.cwd(),
+    nodePaths: [process.cwd(), path.join(process.cwd(), 'node_modules')],
+  });
+}
+
+async function buildForBrowser(inputPath, outFile) {
+  const entryCode = `import React from 'react';
+import { hydrateRoot } from 'react-dom/client';
+import Widget from ${JSON.stringify(inputPath)};
+const root = document.getElementById('root');
+hydrateRoot(root, React.createElement(Widget));`;
+  const entryFile = outFile.replace(/\.js$/, '.entry.js');
+  fs.writeFileSync(entryFile, entryCode, 'utf8');
+  await esbuild.build({
+    entryPoints: [entryFile],
+    outfile: outFile,
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    target: ['es2020'],
+    jsx: 'automatic',
+    jsxImportSource: 'react',
+    sourcemap: false,
+    logLevel: 'silent',
+    absWorkingDir: process.cwd(),
+    nodePaths: [process.cwd(), path.join(process.cwd(), 'node_modules')],
+    define: { 'process.env.NODE_ENV': '"production"' }
+  });
+}
+
+function htmlTemplate({ ssrMarkup, includeTailwindCdn = true }) {
+  const tailwindScripts = includeTailwindCdn
+    ? `\n    <script>window.tailwind=window.tailwind||{};window.tailwind.config={corePlugins:{preflight:false}};<\/script>\n    <script src=\"https://cdn.tailwindcss.com\"><\/script>\n  `
+    : '';
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html,body,#root { margin: 0; padding: 0; background: transparent; }
+    body { overflow: hidden; }
+    .widget { display: inline-block; }
+  </style>
+  ${tailwindScripts}
+  <title>render-jsx-batch</title>
+</head>
+<body>
+  <div id="root">${ssrMarkup}</div>
+</body>
+</html>`;
+}
+
+async function* walk(dir) {
+  const entries = await fsp.readdir(dir, { withFileTypes: true });
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      yield* walk(full);
+    } else if (e.isFile() && /\.jsx$/.test(e.name)) {
+      yield full;
+    }
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  if (args.length < 1) {
+    console.error('Usage: render-jsx-batch <folder> [-j N]');
+    process.exit(1);
+  }
+  let dir = '';
+  let jobs = undefined;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-j' || args[i] === '--jobs') {
+      jobs = Number(args[++i]);
+    } else {
+      dir = args[i];
+    }
+  }
+  dir = path.resolve(process.cwd(), dir);
+  const files = [];
+  for await (const f of walk(dir)) files.push(f);
+  if (files.length === 0) {
+    log('No .jsx files found under:', dir);
+    return;
+  }
+  const cpu = os.cpus()?.length || 4;
+  const concurrency = Math.max(1, Math.min(files.length, jobs || cpu));
+  log('Folder:', dir);
+  log('Files:', files.length);
+  log('Concurrency:', concurrency);
+
+  const browser = await chromium.launch({ headless: true });
+  // Reuse a single context across all pages to share cache (e.g. Tailwind CDN)
+  const context = await browser.newContext({ viewport: { width: 1200, height: 1000 } });
+
+  // Warm up Tailwind CDN cache once for the context to speed first renders
+  try {
+    const warm = await context.newPage();
+    await warm.setContent(`<!doctype html><html><head>
+      <script>window.tailwind=window.tailwind||{};window.tailwind.config={corePlugins:{preflight:false}};<\/script>
+      <script src="https://cdn.tailwindcss.com"><\/script>
+    </head><body></body></html>`, { waitUntil: 'load' });
+    await warm.close();
+  } catch {}
+
+  let idx = 0;
+  const results = [];
+  async function worker() {
+    while (true) {
+      const i = idx++;
+      if (i >= files.length) break;
+      const file = files[i];
+      const t0 = Date.now();
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'render-jsx-batch-'));
+      const ssrOut = path.join(tmpDir, 'ssr.js');
+      const browserOut = path.join(tmpDir, 'client.js');
+      const normalizedInput = normalizeJsxToTemp(file, tmpDir);
+      try {
+        await buildForNode(normalizedInput, ssrOut);
+        const mod = await import(pathToFileURL(ssrOut).href);
+        const Widget = mod.default || mod.Widget;
+        if (!Widget) throw new Error('No default export');
+        const ssrMarkup = ReactDOMServer.renderToString(React.createElement(Widget));
+        await buildForBrowser(normalizedInput, browserOut);
+        const html = htmlTemplate({ ssrMarkup, includeTailwindCdn: true });
+
+        const page = await context.newPage();
+        await page.setContent(html, { waitUntil: 'load' });
+        const clientCode = fs.readFileSync(browserOut, 'utf8');
+        await page.addScriptTag({ content: clientCode });
+        await page.evaluate(() => { document.body.style.background = 'transparent'; });
+        await page.waitForSelector('.widget', { state: 'attached', timeout: 10000 });
+        await page.waitForTimeout(60);
+        const widget = await page.$('.widget');
+        if (!widget) throw new Error('No .widget');
+        async function measure() { return page.evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }, widget); }
+        let box = await measure();
+        const start = Date.now();
+        while ((box.width === 0 || box.height === 0) && Date.now() - start < 3000) {
+          await page.waitForTimeout(50);
+          box = await measure();
+        }
+        const vw = Math.max(400, Math.ceil(box.x + box.width + 20));
+        const vh = Math.max(400, Math.ceil(box.y + box.height + 20));
+        await page.setViewportSize({ width: vw, height: vh });
+
+        const { dir: d, name } = path.parse(file);
+        const outPath = path.join(d, `${name}.png`);
+        await widget.screenshot({ path: outPath, omitBackground: true });
+        await page.close();
+        results.push({ file, ok: true, ms: Date.now() - t0, size: `${Math.round(box.width)}x${Math.round(box.height)}` });
+      } catch (err) {
+        results.push({ file, ok: false, error: String(err) });
+      }
+    }
+  }
+
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+  await browser.close();
+
+  for (const r of results) {
+    if (r.ok) {
+      log('OK', r.file, r.size, `${r.ms}ms`);
+    } else {
+      log('FAIL', r.file, r.error);
+    }
+  }
+}
+
+main().catch((e) => { console.error('[render-jsx-batch] Error:', e); process.exit(1); });
