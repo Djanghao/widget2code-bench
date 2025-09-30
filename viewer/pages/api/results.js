@@ -26,7 +26,7 @@ export default function handler(req, res) {
         .map((f) => path.join(catDir, f.name));
       categories[cat] = files
         .map((f) => ({
-          name: path.basename(f),
+          name: path.basename(f, path.extname(f)),
           ext: path.extname(f).toLowerCase(),
           path: path.relative(path.join(RESULTS_ROOT, run), f).replaceAll("\\", "/"),
           code: readText(f),
