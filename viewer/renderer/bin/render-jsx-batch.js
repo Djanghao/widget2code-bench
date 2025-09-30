@@ -22,7 +22,8 @@ function normalizeJsxToTemp(inputPath, tmpDir) {
   return out;
 }
 
-async function buildForNode(inputPath, outFile) {
+async function buildForNode(inputPath, outFile, workingDir) {
+  const viewerRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   await esbuild.build({
     entryPoints: [inputPath],
     outfile: outFile,
@@ -34,12 +35,13 @@ async function buildForNode(inputPath, outFile) {
     jsxImportSource: 'react',
     sourcemap: false,
     logLevel: 'silent',
-    absWorkingDir: process.cwd(),
-    nodePaths: [process.cwd(), path.join(process.cwd(), 'node_modules')],
+    absWorkingDir: workingDir || viewerRoot,
+    nodePaths: [viewerRoot, path.join(viewerRoot, 'node_modules')],
   });
 }
 
-async function buildForBrowser(inputPath, outFile) {
+async function buildForBrowser(inputPath, outFile, workingDir) {
+  const viewerRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
   const entryCode = `import React from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import Widget from ${JSON.stringify(inputPath)};
@@ -58,8 +60,8 @@ hydrateRoot(root, React.createElement(Widget));`;
     jsxImportSource: 'react',
     sourcemap: false,
     logLevel: 'silent',
-    absWorkingDir: process.cwd(),
-    nodePaths: [process.cwd(), path.join(process.cwd(), 'node_modules')],
+    absWorkingDir: workingDir || viewerRoot,
+    nodePaths: [viewerRoot, path.join(viewerRoot, 'node_modules')],
     define: { 'process.env.NODE_ENV': '"production"' }
   });
 }
@@ -128,10 +130,8 @@ async function main() {
   log('Concurrency:', concurrency);
 
   const browser = await chromium.launch({ headless: true });
-  // Reuse a single context across all pages to share cache (e.g. Tailwind CDN)
   const context = await browser.newContext({ viewport: { width: 1200, height: 1000 } });
 
-  // Warm up Tailwind CDN cache once for the context to speed first renders
   try {
     const warm = await context.newPage();
     await warm.setContent(`<!doctype html><html><head>
@@ -153,13 +153,14 @@ async function main() {
       const ssrOut = path.join(tmpDir, 'ssr.js');
       const browserOut = path.join(tmpDir, 'client.js');
       const normalizedInput = normalizeJsxToTemp(file, tmpDir);
+      const workingDir = path.dirname(file);
       try {
-        await buildForNode(normalizedInput, ssrOut);
+        await buildForNode(normalizedInput, ssrOut, workingDir);
         const mod = await import(pathToFileURL(ssrOut).href);
         const Widget = mod.default || mod.Widget;
         if (!Widget) throw new Error('No default export');
         const ssrMarkup = ReactDOMServer.renderToString(React.createElement(Widget));
-        await buildForBrowser(normalizedInput, browserOut);
+        await buildForBrowser(normalizedInput, browserOut, workingDir);
         const html = htmlTemplate({ ssrMarkup, includeTailwindCdn: true });
 
         const page = await context.newPage();

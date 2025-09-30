@@ -32,21 +32,16 @@ async function main() {
   const context = await browser.newContext({ viewport: { width: 1200, height: 1000 } });
   const page = await context.newPage();
 
-  // Navigate to the local HTML file so relative URLs work
   await page.goto(fileUrl, { waitUntil: 'load' });
 
-  // Ensure transparent page background outside of the widget
   await page.evaluate(() => {
     document.documentElement.style.background = 'transparent';
     document.body && (document.body.style.background = 'transparent');
-    // Avoid scrollbars changing layout
     if (document.body) document.body.style.overflow = 'hidden';
   });
 
-  // Wait for widget to exist
   await page.waitForSelector('.widget', { state: 'attached', timeout: 10000 });
 
-  // Give a brief moment for any hydration (Tailwind CDN, icon libs, etc.)
   await page.waitForTimeout(80);
 
   const widget = await page.$('.widget');
@@ -68,12 +63,10 @@ async function main() {
     box = await measure();
   }
 
-  // Adjust viewport so the element is fully visible
   const vw = Math.max(400, Math.ceil(box.x + box.width + 20));
   const vh = Math.max(400, Math.ceil(box.y + box.height + 20));
   await page.setViewportSize({ width: vw, height: vh });
 
-  // Re-measure after viewport adjustment (rarely changes but safe)
   box = await measure();
   log(`Widget size: ${Math.round(box.width)} x ${Math.round(box.height)}`);
 
@@ -90,4 +83,3 @@ main().catch((err) => {
   console.error('[render-html] Error:', err);
   process.exit(1);
 });
-

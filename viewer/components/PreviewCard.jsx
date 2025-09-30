@@ -1,49 +1,40 @@
-import { Card, Tabs, Typography, Button, Modal, message, Tooltip } from "antd";
-import { useMemo, useState } from "react";
+import { Card, Tabs, Typography, Button, Modal, Spin, Tooltip, message } from "antd";
+import { useMemo, useState, useEffect } from "react";
 
 const { Text } = Typography;
 
-export default function PreviewCard({ title, ext, code, prompt, sourceUrl }) {
+export default function PreviewCard({ title, code, prompt, sourceUrl, run, filePath }) {
   const [compareOpen, setCompareOpen] = useState(false);
-  const htmlDoc = useMemo(() => {
-    if (ext === ".html") return code;
-    if (ext !== ".jsx") return `<!doctype html><html><body><pre style="font:12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; white-space:pre-wrap; padding:12px;">${escapeHtml(code||"")}</pre></body></html>`;
-    const jsx = (code || "").replace(/^\s*export\s+default\s+function\s+/m, "function ");
-    const safeJSX = jsx.replace(/<\/(script)>/gi, "</" + "script>");
-    return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src data: https:; font-src data: https:; connect-src https://unpkg.com https://cdn.tailwindcss.com; object-src 'none'; base-uri 'none';" />
-  <style>
-    html,body,#root{height:100%} body{margin:0;background:#ffffff;display:flex;align-items:center;justify-content:center}
-  </style>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script>
-    (function(){
-      const names = ["Sun","Moon","Cloud","CloudSun","CloudMoon","Rain","Snowflake","MapPin","Bell","Heart","Star","Search","Calendar","Clock","ChevronRight","ChevronLeft","ChevronDown","ChevronUp","Camera","Phone","Wifi","Battery","Bluetooth","Music","Play","Pause","Volume","Settings","User","Home","MessageCircle"]; 
-      const Icon = (props)=> React.createElement('div', {style:{display:'inline-block',width:(props.size||16)+'px',height:(props.size||16)+'px',border:'1px solid #D1D5DB',borderRadius:'4px'}},'');
-      names.forEach(n => { window[n] = Icon; });
-    })();
-  </script>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel">
-${safeJSX}
-try {
-  const root = ReactDOM.createRoot(document.getElementById('root'));
-  const Comp = typeof Widget !== 'undefined' ? Widget : (typeof exports !== 'undefined' && exports.default ? exports.default : null);
-  if (Comp) root.render(React.createElement(Comp));
-} catch (e) { document.body.innerHTML = '<pre style="padding:16px;color:#ef4444">'+(e && e.stack || e)+'</pre>'; }
-  </script>
-</body>
-</html>`;
-  }, [code, ext]);
+  const [loading, setLoading] = useState(true);
+  const [pngUrl, setPngUrl] = useState(null);
+  const [dimensions, setDimensions] = useState(null);
+
+  useEffect(() => {
+    if (!run || !filePath) return;
+
+    setLoading(true);
+    fetch(`/api/render?run=${encodeURIComponent(run)}&file=${encodeURIComponent(filePath)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.pngPath) {
+          const url = `/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(data.pngPath)}`;
+          setPngUrl(url);
+        } else if (data.error) {
+          console.error('Render error:', data.error);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to render:', err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [run, filePath]);
+
+  const handleImageLoad = (e) => {
+    const img = e.target;
+    setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+  };
 
   const promptText = prompt ?? "";
 
@@ -63,14 +54,14 @@ try {
             key: "render",
             label: "Render",
             children: (
-              <div className="iframeWrap">
-                <iframe
-                  title={title}
-                  srcDoc={htmlDoc}
-                  style={{ width: "100%", height: 420, border: 0, borderRadius: 8, background: "#fff" }}
-                  sandbox="allow-scripts"
-                  referrerPolicy="no-referrer"
-                />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 420, background: '#f5f5f5', borderRadius: 8 }}>
+                {loading ? (
+                  <Spin size="large" />
+                ) : pngUrl ? (
+                  <WidgetPreview pngUrl={pngUrl} dimensions={dimensions} onLoad={handleImageLoad} />
+                ) : (
+                  <Text type="secondary">Failed to render</Text>
+                )}
               </div>
             ),
           },
@@ -124,14 +115,18 @@ try {
           </div>
           <div style={{ flex: 1, minWidth: 280 }}>
             <Text strong style={{ display: "block", marginBottom: 8 }}>Render</Text>
-            <div className="iframeWrap" style={{ border: "1px solid #eef0f3", borderRadius: 8 }}>
-              <iframe
-                title={`compare-${title}`}
-                srcDoc={htmlDoc}
-                style={{ width: "100%", height: 420, border: 0, borderRadius: 8, background: "#fff" }}
-                sandbox="allow-scripts"
-                referrerPolicy="no-referrer"
-              />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, background: '#f5f5f5', borderRadius: 8, border: "1px solid #eef0f3" }}>
+              {loading ? (
+                <Spin size="large" />
+              ) : pngUrl ? (
+                <img
+                  alt="render"
+                  src={pngUrl}
+                  style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain" }}
+                />
+              ) : (
+                <Text type="secondary">Failed to render</Text>
+              )}
             </div>
           </div>
         </div>
@@ -140,8 +135,70 @@ try {
   );
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+function WidgetPreview({ pngUrl, dimensions, onLoad }) {
+  return (
+    <div style={{ position: 'relative', display: 'inline-block', padding: 40 }}>
+      <img
+        src={pngUrl}
+        alt="widget"
+        onLoad={onLoad}
+        style={{ display: 'block', maxWidth: '100%', maxHeight: 400 }}
+      />
+      {dimensions && (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 20,
+              height: 1,
+              background: '#ff4d4f',
+              pointerEvents: 'none'
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              bottom: 4,
+              fontSize: 12,
+              color: '#ff4d4f',
+              fontWeight: 600,
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {dimensions.width}px
+          </div>
+          <div
+            style={{
+              position: 'absolute',
+              right: 20,
+              top: 0,
+              bottom: 0,
+              width: 1,
+              background: '#ff4d4f',
+              pointerEvents: 'none'
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              right: 4,
+              top: 0,
+              fontSize: 12,
+              color: '#ff4d4f',
+              fontWeight: 600,
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)'
+            }}
+          >
+            {dimensions.height}px
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function CodeViewer({ label, content, placeholder, copyMessage }) {

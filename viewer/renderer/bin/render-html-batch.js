@@ -53,7 +53,6 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1200, height: 1000 } });
 
-  // Warm up common CDNs to reduce first-hit latency
   try {
     const warm = await context.newPage();
     await warm.setContent(`<!doctype html><html><head>
@@ -77,7 +76,6 @@ async function main() {
         const fileUrl = pathToFileURL(file).href;
         await page.goto(fileUrl, { waitUntil: 'load' });
 
-        // Transparent outside of widget; avoid scrollbars
         await page.evaluate(() => {
           document.documentElement.style.background = 'transparent';
           if (document.body) {
@@ -136,4 +134,3 @@ async function main() {
 }
 
 main().catch((e) => { console.error('[render-html-batch] Error:', e); process.exit(1); });
-

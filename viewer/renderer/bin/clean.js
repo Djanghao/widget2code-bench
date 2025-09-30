@@ -10,7 +10,6 @@ async function* walk(dir) {
   const entries = await fsp.readdir(dir, { withFileTypes: true });
   for (const e of entries) {
     const full = path.join(dir, e.name);
-    // Skip common heavy or irrelevant dirs
     if (e.isDirectory()) {
       if (e.name === 'node_modules' || e.name === '.git' || e.name === '.next' || e.name === 'dist' || e.name === 'build') continue;
       yield* walk(full);
@@ -66,4 +65,3 @@ async function main() {
 }
 
 main().catch((e) => { console.error('[clean] Error:', e); process.exit(1); });
-

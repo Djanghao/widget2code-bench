@@ -46,6 +46,14 @@ export default function Home() {
       .then((r) => r.json())
       .then((d) => setResults(d.categories || {}))
       .finally(() => setLoadingResults(false));
+
+    fetch('/api/batch-render', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ run, image: selected })
+    }).catch((err) => {
+      console.error('Batch render failed:', err);
+    });
   }, [run, selected]);
 
   const filtered = useMemo(() => {
@@ -173,10 +181,11 @@ export default function Home() {
                         <PreviewCard
                           key={it.name}
                           title={it.name}
-                          ext={it.ext}
                           code={it.code}
                           prompt={it.prompt}
                           sourceUrl={selectedSource}
+                          run={run}
+                          filePath={it.path}
                         />
                       ))}
                     </div>
