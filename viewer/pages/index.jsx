@@ -142,7 +142,7 @@ export default function Home() {
           className={`appSider${siderCollapsed ? " appSiderCollapsed" : ""}`}
         >
           <div className="siderHeader" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Input.Search
+            <Input
               placeholder="Filter images"
               allowClear
               onChange={(e) => setFilter(e.target.value)}
