@@ -10,6 +10,7 @@ viewer/node_modules/
 
 # Generated results
 results/
+tmp/
 
 # OS files
 .DS_Store
