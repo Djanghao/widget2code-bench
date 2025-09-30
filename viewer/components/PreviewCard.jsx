@@ -50,9 +50,21 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
         size="small"
         tabBarExtraContent={{
           right: (
-            <Button size="small" onClick={() => setCompareOpen(true)} disabled={!sourceUrl}>
-              Compare
-            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Tooltip title={pngUrl ? "Download PNG" : "Render first"}>
+                <Button
+                  size="small"
+                  href={pngUrl || undefined}
+                  download={`${String(title || 'render').replace(/\s+/g, '_')}.png`}
+                  disabled={!pngUrl}
+                >
+                  Download
+                </Button>
+              </Tooltip>
+              <Button size="small" onClick={() => setCompareOpen(true)} disabled={!sourceUrl}>
+                Compare
+              </Button>
+            </div>
           ),
         }}
         items={[
@@ -108,7 +120,20 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
       >
         <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 280 }}>
-            <Text strong style={{ display: "block", marginBottom: 8 }}>Original</Text>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <Text strong>Original</Text>
+              {sourceUrl ? (
+                <Tooltip title="Download PNG">
+                  <Button
+                    size="small"
+                    href={sourceUrl}
+                    download={`${String(title || 'original').replace(/\s+/g, '_')}.png`}
+                  >
+                    Download
+                  </Button>
+                </Tooltip>
+              ) : null}
+            </div>
             {sourceUrl ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, background: '#f5f5f5', borderRadius: 8, border: "1px solid #eef0f3" }}>
                 <WidgetPreview pngUrl={sourceUrl} dimensions={origDimensions} onLoad={handleOriginalLoad} maxHeight={'60vh'} />
