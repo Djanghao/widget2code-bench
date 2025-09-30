@@ -190,29 +190,23 @@ export default function Playground() {
             </a>
           </Link>
         </div>
-        <Segmented
-          value={mode}
-          onChange={setMode}
-          options={[
-            { label: 'Upload', value: 'upload', icon: <CloudUploadOutlined /> },
-            { label: 'Live Paste', value: 'live', icon: <ThunderboltOutlined /> }
-          ]}
-          style={{ marginLeft: 24 }}
-        />
         <div style={{ flex: 1 }} />
-        {mode === 'upload' && (
-          <Space>
-            <Button icon={<DeleteOutlined />} onClick={async () => { await fetch('/api/playground/reset', { method: 'POST' }); await refreshList(); }}>Clear</Button>
-            <Button type="primary" icon={<PlayCircleOutlined />} loading={rendering} disabled={!files.length || !anyRenderable} onClick={onRenderAll}>Render All</Button>
-          </Space>
-        )}
       </Header>
       <Layout style={{ height: 'calc(100vh - 64px)' }}>
 
         {mode === 'upload' ? (
           <>
             <Sider width={360} className="appSider">
-              <div className="siderHeader">
+              <div className="siderHeader" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+                <Segmented
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { label: 'Upload', value: 'upload', icon: <CloudUploadOutlined /> },
+                    { label: 'Live Paste', value: 'live', icon: <ThunderboltOutlined /> }
+                  ]}
+                  block
+                />
                 <Title level={5} style={{ margin: 0 }}>Add Files</Title>
               </div>
               <div className="siderScroll" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -244,11 +238,16 @@ export default function Playground() {
                 )}
               </div>
             </Sider>
-            <Content style={{ padding: 16, overflow: 'auto' }}>
-              <Space align="center" style={{ marginBottom: 8 }}>
+            <Content style={{ padding: 0, overflow: 'auto' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 16 }}>
                 <Title level={5} style={{ margin: 0 }}>Previews</Title>
                 {rendering ? <Spin size="small" /> : null}
-              </Space>
+                <Space style={{ marginLeft: 'auto' }}>
+                  <Button icon={<DeleteOutlined />} onClick={async () => { await fetch('/api/playground/reset', { method: 'POST' }); await refreshList(); }}>Clear</Button>
+                  <Button type="primary" icon={<PlayCircleOutlined />} loading={rendering} disabled={!files.length || !anyRenderable} onClick={onRenderAll}>Render All</Button>
+                </Space>
+              </div>
+              <div style={{ padding: 16 }}>
               {!files.length ? (
                 <Empty description="Upload or paste code to begin" style={{ marginTop: 48 }} />
               ) : (
@@ -258,33 +257,45 @@ export default function Playground() {
                   ))}
                 </div>
               )}
+              </div>
             </Content>
           </>
         ) : (
-          <div style={{ display: 'flex', height: 'calc(100vh - 140px)' }}>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #eef0f3' }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #eef0f3', background: '#fafafa' }}>
-                <Space>
-                  <Text strong>Code Editor</Text>
+          <div style={{ display: 'flex', height: '100%' }}>
+            <Sider width={360} className="appSider">
+              <div className="siderHeader" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+                <Segmented
+                  value={mode}
+                  onChange={setMode}
+                  options={[
+                    { label: 'Upload', value: 'upload', icon: <CloudUploadOutlined /> },
+                    { label: 'Live Paste', value: 'live', icon: <ThunderboltOutlined /> }
+                  ]}
+                  block
+                />
+                <Title level={5} style={{ margin: 0 }}>Live Code Editor</Title>
+              </div>
+              <div className="siderScroll" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <Radio.Group value={liveType} onChange={(e) => setLiveType(e.target.value)} size="small">
                     <Radio.Button value="html">HTML</Radio.Button>
                     <Radio.Button value="jsx">JSX</Radio.Button>
                   </Radio.Group>
-                </Space>
+                </div>
+                <Input.TextArea
+                  value={liveCode}
+                  onChange={(e) => setLiveCode(e.target.value)}
+                  placeholder={`Paste your ${liveType.toUpperCase()} code here...\n\nIt will auto-render as you type!`}
+                  style={{ flex: 1, resize: 'none', fontFamily: 'monospace', fontSize: 14 }}
+                />
               </div>
-              <Input.TextArea
-                value={liveCode}
-                onChange={(e) => setLiveCode(e.target.value)}
-                placeholder={`Paste your ${liveType.toUpperCase()} code here...\n\nIt will auto-render as you type!`}
-                style={{ flex: 1, resize: 'none', border: 'none', borderRadius: 0, fontFamily: 'monospace', fontSize: 14 }}
-              />
-            </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '12px 16px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Text strong>Live Preview</Text>
+            </Sider>
+            <Content style={{ padding: 0, overflow: 'auto' }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Title level={5} style={{ margin: 0 }}>Live Preview</Title>
                 {liveRendering && <Spin size="small" />}
               </div>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', overflow: 'auto', padding: 16 }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', minHeight: 'calc(100vh - 128px)', padding: 16 }}>
                 {livePng ? (
                   <img
                     key={livePng}
@@ -298,7 +309,7 @@ export default function Playground() {
                   <Empty description="Start typing to see live preview" />
                 )}
               </div>
-            </div>
+            </Content>
           </div>
         )}
       </Layout>
@@ -340,7 +351,7 @@ function PreviewBox({ file, png }) {
           <Button size="small" icon={<DownloadOutlined />} disabled={!pngPath} href={downloadHref} download={file.replace(/\.(html|jsx|js)$/i, '.png')} />
         </Tooltip>
       </Space>}
-      bodyStyle={{ padding: 12 }}
+      styles={{ body: { padding: 12 } }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 220, background: '#f5f5f5', borderRadius: 8 }}>
         {pngPath ? (
