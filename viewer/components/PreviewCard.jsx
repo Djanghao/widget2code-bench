@@ -8,6 +8,7 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
   const [loading, setLoading] = useState(true);
   const [pngUrl, setPngUrl] = useState(null);
   const [dimensions, setDimensions] = useState(null);
+  const [origDimensions, setOrigDimensions] = useState(null);
 
   useEffect(() => {
     if (!run || !filePath) return;
@@ -34,6 +35,11 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
   const handleImageLoad = (e) => {
     const img = e.target;
     setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+  };
+
+  const handleOriginalLoad = (e) => {
+    const img = e.target;
+    setOrigDimensions({ width: img.naturalWidth, height: img.naturalHeight });
   };
 
   const promptText = prompt ?? "";
@@ -104,11 +110,9 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
           <div style={{ flex: 1, minWidth: 280 }}>
             <Text strong style={{ display: "block", marginBottom: 8 }}>Original</Text>
             {sourceUrl ? (
-              <img
-                alt="original"
-                src={sourceUrl}
-                style={{ width: "100%", maxHeight: "60vh", objectFit: "contain", borderRadius: 8, border: "1px solid #eef0f3" }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200, background: '#f5f5f5', borderRadius: 8, border: "1px solid #eef0f3" }}>
+                <WidgetPreview pngUrl={sourceUrl} dimensions={origDimensions} onLoad={handleOriginalLoad} maxHeight={'60vh'} />
+              </div>
             ) : (
               <div className="center" style={{ height: 200 }}>No source image</div>
             )}
@@ -119,11 +123,7 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
               {loading ? (
                 <Spin size="large" />
               ) : pngUrl ? (
-                <img
-                  alt="render"
-                  src={pngUrl}
-                  style={{ maxWidth: "100%", maxHeight: "60vh", objectFit: "contain" }}
-                />
+                <WidgetPreview pngUrl={pngUrl} dimensions={dimensions} onLoad={handleImageLoad} maxHeight={'60vh'} />
               ) : (
                 <Text type="secondary">Failed to render</Text>
               )}
@@ -135,7 +135,7 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
   );
 }
 
-function WidgetPreview({ pngUrl, dimensions, onLoad }) {
+function WidgetPreview({ pngUrl, dimensions, onLoad, maxHeight = 400, padding = 40 }) {
   const containerRef = useRef(null);
   const imgRef = useRef(null);
 
@@ -185,13 +185,13 @@ function WidgetPreview({ pngUrl, dimensions, onLoad }) {
   const labelGap = 6; // gap between line and pill label
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block', padding: 40 }}>
+    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block', padding }}>
       <img
         ref={imgRef}
         src={pngUrl}
         alt="widget"
         onLoad={handleLoad}
-        style={{ display: 'block', maxWidth: '100%', maxHeight: 400 }}
+        style={{ display: 'block', maxWidth: '100%', maxHeight: maxHeight }}
       />
       {dimensions && imgBox && (
         <>
