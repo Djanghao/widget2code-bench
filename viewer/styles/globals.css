@@ -79,6 +79,18 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
   flex: 1;
   overflow-y: auto;
   padding: 12px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.appSider .ant-upload-wrapper .ant-upload-list {
+  max-height: 140px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+.appSider .ant-upload-wrapper .ant-upload-list .ant-upload-list-item {
+  border-radius: 8px;
 }
 
 .appSiderCollapsed .siderHeader { display: flex; align-items: center; justify-content: center; }
@@ -116,6 +128,8 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
   border-color: #1d9bf0 !important;
   border-radius: 9999px !important;
   font-weight: 600;
+}
+.ant-btn-primary:not(.ant-btn-sm) {
   height: 36px;
   padding: 0 16px;
 }
@@ -128,10 +142,12 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
 .ant-btn-default {
   border-radius: 9999px !important;
   font-weight: 600;
-  height: 36px;
-  padding: 0 16px;
   border-color: #cfd9de;
   color: #0f1419;
+}
+.ant-btn-default:not(.ant-btn-sm) {
+  height: 36px;
+  padding: 0 16px;
 }
 
 .ant-btn-default:hover {
@@ -167,6 +183,59 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
 .ant-upload.ant-upload-drag:hover {
   border-color: #1d9bf0;
   background: #eff9ff;
+}
+.appSider .siderScroll .ant-upload-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.appSider .siderScroll .ant-upload-wrapper .ant-upload {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.appSider .siderScroll .ant-upload-wrapper .ant-upload-drag {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  flex-direction: column;
+}
+.appSider .siderScroll .uploadDraggerFixed.ant-upload-wrapper {
+  flex: 0 0 auto;
+}
+
+.appSider .siderScroll .uploadDraggerFixed.ant-upload-wrapper .ant-upload {
+  flex: 0 0 auto;
+}
+
+.appSider .siderScroll .uploadDraggerFixed.ant-upload-wrapper .ant-upload-drag {
+  height: var(--upload-dragger-height, 220px);
+  flex: 0 0 auto;
+  padding: 16px;
+}
+
+.appSider .siderScroll .uploadDraggerFixed.ant-upload-wrapper .ant-upload-drag p {
+  margin: 6px 0;
+}
+
+.appSider .siderScroll .uploadDraggerFixed.ant-upload-wrapper .ant-upload-drag .ant-upload-drag-icon {
+  font-size: 36px;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.appSider .siderScroll .uploadDraggerFixed.ant-upload-wrapper .ant-upload-text {
+  font-size: 14px;
+}
+
+.appSider .siderScroll .uploadDraggerFixed.ant-upload-wrapper .ant-upload-hint {
+  font-size: 12px;
 }
 
 .ant-list-item {

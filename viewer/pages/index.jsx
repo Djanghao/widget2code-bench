@@ -106,6 +106,12 @@ export default function Home() {
   return (
     <Layout className="layout">
       <Header style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 24px" }}>
+        <Button
+          type="text"
+          icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={() => setSiderCollapsed((v) => !v)}
+          aria-label={siderCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        />
         <Title level={4} style={{ color: "#0f1419", margin: 0, fontWeight: 700 }}>Widget2Code</Title>
         <div style={{ display: "flex", gap: 8, marginLeft: 16 }}>
           <Link href="/" passHref legacyBehavior>
@@ -127,18 +133,6 @@ export default function Home() {
         <RunPicker runs={runs} value={run} onChange={setRun} />
       </Header>
       <Layout style={{ height: "calc(100vh - 64px)", position: "relative" }}>
-        {siderCollapsed ? (
-          <Button
-            className="siderFloatToggle"
-            type="default"
-            shape="circle"
-            size="small"
-            icon={<MenuUnfoldOutlined />}
-            onClick={() => setSiderCollapsed(false)}
-            aria-label="Expand sidebar"
-            style={{ position: "absolute", left: 12, top: 12, zIndex: 20 }}
-          />
-        ) : null}
         <Sider
           width={320}
           collapsedWidth={0}
@@ -147,31 +141,14 @@ export default function Home() {
           trigger={null}
           className={`appSider${siderCollapsed ? " appSiderCollapsed" : ""}`}
         >
-          {siderCollapsed ? (
-            <div className="siderHeader">
-              <Button
-                type="text"
-                icon={<MenuUnfoldOutlined />}
-                onClick={() => setSiderCollapsed(false)}
-                aria-label="Expand sidebar"
-              />
-            </div>
-          ) : (
-            <div className="siderHeader" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Button
-                type="text"
-                icon={<MenuFoldOutlined />}
-                onClick={() => setSiderCollapsed(true)}
-                aria-label="Collapse sidebar"
-              />
-              <Input.Search
-                placeholder="Filter images"
-                allowClear
-                onChange={(e) => setFilter(e.target.value)}
-                value={filter}
-              />
-            </div>
-          )}
+          <div className="siderHeader" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Input.Search
+              placeholder="Filter images"
+              allowClear
+              onChange={(e) => setFilter(e.target.value)}
+              value={filter}
+            />
+          </div>
           <div className="siderScroll">
             {loadingImages ? (
               <div className="center" style={{ height: 200 }}><Spin /></div>

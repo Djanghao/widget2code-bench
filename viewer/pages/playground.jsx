@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Layout, Typography, Button, Divider, Upload, message, Input, Radio, List, Empty, Spin, Space, Card, Tooltip, Segmented, Tabs } from 'antd';
-import { InboxOutlined, FolderOpenOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, PlayCircleOutlined, PlusOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, CloudUploadOutlined } from '@ant-design/icons';
+import { InboxOutlined, FolderOpenOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, PlayCircleOutlined, PlusOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, CloudUploadOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 
 const { Header, Sider, Content } = Layout;
@@ -12,6 +12,7 @@ export default function Playground() {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [pasteContent, setPasteContent] = useState('');
   const [pasteType, setPasteType] = useState('html');
   const [pasteName, setPasteName] = useState('widget.html');
@@ -97,7 +98,10 @@ export default function Playground() {
         message.error(`${info.file?.name || 'File'} upload failed.`);
       }
     },
-    showUploadList: true,
+    // Hide Ant Design's built-in file list under the uploader
+    showUploadList: false,
+    // Keep the visual footprint compact while showing progress
+    progress: { strokeWidth: 4 },
   };
 
   const handlePasteSave = async () => {
@@ -173,6 +177,12 @@ export default function Playground() {
   return (
     <Layout className="layout">
       <Header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px' }}>
+        <Button
+          type="text"
+          icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          onClick={() => setSiderCollapsed((v) => !v)}
+          aria-label={siderCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        />
         <Title level={4} style={{ color: '#0f1419', margin: 0, fontWeight: 700 }}>Widget2Code</Title>
         <div style={{ display: 'flex', gap: 8, marginLeft: 16 }}>
           <Link href="/" passHref legacyBehavior>
@@ -195,9 +205,16 @@ export default function Playground() {
       <Layout style={{ height: 'calc(100vh - 64px)' }}>
 
         {mode === 'upload' ? (
-          <>
-            <Sider width={360} className="appSider">
-              <div className="siderHeader" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+          <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+            <Sider
+              width={320}
+              collapsedWidth={0}
+              collapsible
+              collapsed={siderCollapsed}
+              trigger={null}
+              className={`appSider${siderCollapsed ? ' appSiderCollapsed' : ''}`}
+            >
+              <div className="siderHeader" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 16 }}>
                 <Segmented
                   value={mode}
                   onChange={setMode}
@@ -207,38 +224,17 @@ export default function Playground() {
                   ]}
                   block
                 />
-                <Title level={5} style={{ margin: 0 }}>Add Files</Title>
+                <Title level={5} style={{ margin: '8px 0 0 0' }}>Add Files</Title>
               </div>
               <div className="siderScroll" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <Dragger {...uploadProps} style={{ borderRadius: 10 }}>
+                <Dragger {...uploadProps} className="uploadDraggerFixed" style={{ borderRadius: 10 }}>
                   <p className="ant-upload-drag-icon"><InboxOutlined /></p>
                   <p className="ant-upload-text">Click or drag files/folder to upload</p>
                   <p className="ant-upload-hint">HTML, JSX, and any assets; folder structure preserved</p>
                 </Dragger>
-
-                <Divider style={{ margin: '8px 0' }} />
-                <Title level={5} style={{ margin: '4px 0 8px' }}>Uploaded Files</Title>
-                {loading ? (
-                  <div className="center" style={{ height: 120 }}><Spin /></div>
-                ) : files.length ? (
-                  <List
-                    size="small"
-                    dataSource={files}
-                    renderItem={(item) => (
-                      <List.Item>
-                        <List.Item.Meta
-                          title={<Text>{item.file}</Text>}
-                          description={item.png ? <Text type="secondary">Rendered</Text> : <Text type="secondary">Pending</Text>}
-                        />
-                      </List.Item>
-                    )}
-                  />
-                ) : (
-                  <Empty description="No files yet" />
-                )}
               </div>
             </Sider>
-            <Content style={{ padding: 0, overflow: 'auto' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
               <div style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 16 }}>
                 <Title level={5} style={{ margin: 0 }}>Previews</Title>
                 {rendering ? <Spin size="small" /> : null}
@@ -247,23 +243,30 @@ export default function Playground() {
                   <Button type="primary" icon={<PlayCircleOutlined />} loading={rendering} disabled={!files.length || !anyRenderable} onClick={onRenderAll}>Render All</Button>
                 </Space>
               </div>
-              <div style={{ padding: 16 }}>
-              {!files.length ? (
-                <Empty description="Upload or paste code to begin" style={{ marginTop: 48 }} />
-              ) : (
-                <div className="grid">
-                  {files.map((f) => (
-                    <PreviewBox key={f.file} file={f.file} png={f.png} />
-                  ))}
-                </div>
-              )}
+              <div className={!files.length ? 'center' : ''} style={{ padding: 16, flex: 1, overflowY: 'auto' }}>
+                {!files.length ? (
+                  <Empty description="Upload or paste code to begin" />
+                ) : (
+                  <div className="grid">
+                    {files.map((f) => (
+                      <PreviewBox key={f.file} file={f.file} png={f.png} />
+                    ))}
+                  </div>
+                )}
               </div>
-            </Content>
-          </>
+            </div>
+          </div>
         ) : (
           <div style={{ display: 'flex', height: '100%' }}>
-            <Sider width={360} className="appSider">
-              <div className="siderHeader" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 12 }}>
+            <Sider
+              width={320}
+              collapsedWidth={0}
+              collapsible
+              collapsed={siderCollapsed}
+              trigger={null}
+              className={`appSider${siderCollapsed ? ' appSiderCollapsed' : ''}`}
+            >
+              <div className="siderHeader" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 16 }}>
                 <Segmented
                   value={mode}
                   onChange={setMode}
@@ -273,7 +276,7 @@ export default function Playground() {
                   ]}
                   block
                 />
-                <Title level={5} style={{ margin: 0 }}>Live Code Editor</Title>
+                <Title level={5} style={{ margin: '8px 0 0 0' }}>Live Code Editor</Title>
               </div>
               <div className="siderScroll" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -365,4 +368,3 @@ function PreviewBox({ file, png }) {
     </Card>
   );
 }
-
