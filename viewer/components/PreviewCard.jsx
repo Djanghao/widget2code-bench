@@ -1,5 +1,5 @@
 import { Card, Tabs, Typography, Button, Modal, Spin, Tooltip, message } from "antd";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 
 const { Text } = Typography;
 
@@ -136,61 +136,182 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
 }
 
 function WidgetPreview({ pngUrl, dimensions, onLoad }) {
+  const containerRef = useRef(null);
+  const imgRef = useRef(null);
+
+  const [imgBox, setImgBox] = useState(null);
+
+  useEffect(() => {
+    function updateBox() {
+      if (!containerRef.current || !imgRef.current) return;
+      const c = containerRef.current.getBoundingClientRect();
+      const r = imgRef.current.getBoundingClientRect();
+      setImgBox({
+        left: r.left - c.left,
+        top: r.top - c.top,
+        width: r.width,
+        height: r.height,
+      });
+    }
+
+    updateBox();
+    const ro = new (window.ResizeObserver || class { observe(){} disconnect(){} })((entries) => {
+      updateBox();
+    });
+    if (containerRef.current) ro.observe(containerRef.current);
+    if (imgRef.current) ro.observe(imgRef.current);
+    window.addEventListener('resize', updateBox);
+
+    return () => {
+      window.removeEventListener('resize', updateBox);
+      ro.disconnect && ro.disconnect();
+    };
+  }, [pngUrl]);
+
+  const handleLoad = (e) => {
+    onLoad && onLoad(e);
+    // Ensure we measure after image has its layout
+    requestAnimationFrame(() => {
+      if (!containerRef.current || !imgRef.current) return;
+      const c = containerRef.current.getBoundingClientRect();
+      const r = imgRef.current.getBoundingClientRect();
+      setImgBox({ left: r.left - c.left, top: r.top - c.top, width: r.width, height: r.height });
+    });
+  };
+
+  const color = '#1677ff';
+  const line = 2; // line thickness
+  const offset = 12; // gap between PNG edge and measurement line
+  const labelGap = 6; // gap between line and pill label
+
   return (
-    <div style={{ position: 'relative', display: 'inline-block', padding: 40 }}>
+    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block', padding: 40 }}>
       <img
+        ref={imgRef}
         src={pngUrl}
         alt="widget"
-        onLoad={onLoad}
+        onLoad={handleLoad}
         style={{ display: 'block', maxWidth: '100%', maxHeight: 400 }}
       />
-      {dimensions && (
+      {dimensions && imgBox && (
         <>
+          {/* Horizontal measurement line below the image, aligned to PNG edges */}
           <div
             style={{
               position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 20,
-              height: 1,
-              background: '#ff4d4f',
+              left: imgBox.left,
+              top: imgBox.top + imgBox.height + offset,
+              width: imgBox.width,
+              height: line,
+              background: color,
+              borderRadius: line,
+              pointerEvents: 'none'
+            }}
+          />
+          {/* Horizontal end caps */}
+          <div
+            style={{
+              position: 'absolute',
+              left: imgBox.left - (line - 1),
+              top: imgBox.top + imgBox.height + offset - 3,
+              width: line,
+              height: 8,
+              background: color,
+              borderRadius: line,
               pointerEvents: 'none'
             }}
           />
           <div
             style={{
               position: 'absolute',
-              left: 0,
-              bottom: 4,
+              left: imgBox.left + imgBox.width - 1,
+              top: imgBox.top + imgBox.height + offset - 3,
+              width: line,
+              height: 8,
+              background: color,
+              borderRadius: line,
+              pointerEvents: 'none'
+            }}
+          />
+          {/* Horizontal pill label (outside, not on PNG side) */}
+          <div
+            style={{
+              position: 'absolute',
+              left: imgBox.left + imgBox.width / 2,
+              top: imgBox.top + imgBox.height + offset + labelGap,
+              transform: 'translateX(-50%)',
+              background: '#fff',
+              color,
+              border: '1px solid #d0d7de',
+              borderRadius: 9999,
+              padding: '2px 8px',
               fontSize: 12,
-              color: '#ff4d4f',
               fontWeight: 600,
-              whiteSpace: 'nowrap'
+              lineHeight: 1.2,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none'
             }}
           >
             {dimensions.width}px
           </div>
+
+          {/* Vertical measurement line to the right of the image, aligned to PNG edges */}
           <div
             style={{
               position: 'absolute',
-              right: 20,
-              top: 0,
-              bottom: 0,
-              width: 1,
-              background: '#ff4d4f',
+              left: imgBox.left + imgBox.width + offset,
+              top: imgBox.top,
+              width: line,
+              height: imgBox.height,
+              background: color,
+              borderRadius: line,
+              pointerEvents: 'none'
+            }}
+          />
+          {/* Vertical end caps */}
+          <div
+            style={{
+              position: 'absolute',
+              left: imgBox.left + imgBox.width + offset - 3,
+              top: imgBox.top - (line - 1),
+              width: 8,
+              height: line,
+              background: color,
+              borderRadius: line,
               pointerEvents: 'none'
             }}
           />
           <div
             style={{
               position: 'absolute',
-              right: 4,
-              top: 0,
+              left: imgBox.left + imgBox.width + offset - 3,
+              top: imgBox.top + imgBox.height - 1,
+              width: 8,
+              height: line,
+              background: color,
+              borderRadius: line,
+              pointerEvents: 'none'
+            }}
+          />
+          {/* Vertical pill label (outside, not on PNG side) */}
+          <div
+            style={{
+              position: 'absolute',
+              left: imgBox.left + imgBox.width + offset + labelGap,
+              top: imgBox.top + imgBox.height / 2,
+              transform: 'translateY(-50%)',
+              background: '#fff',
+              color,
+              border: '1px solid #d0d7de',
+              borderRadius: 9999,
+              padding: '2px 8px',
               fontSize: 12,
-              color: '#ff4d4f',
               fontWeight: 600,
-              writingMode: 'vertical-rl',
-              transform: 'rotate(180deg)'
+              lineHeight: 1.2,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none'
             }}
           >
             {dimensions.height}px
