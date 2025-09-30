@@ -1,18 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Layout, Typography, Button, Divider, Upload, message, Input, Radio, List, Empty, Spin, Space, Card, Tooltip } from 'antd';
-import { InboxOutlined, FolderOpenOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, PlayCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { Layout, Typography, Button, Divider, Upload, message, Input, Radio, List, Empty, Spin, Space, Card, Tooltip, Segmented, Tabs } from 'antd';
+import { InboxOutlined, FolderOpenOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, PlayCircleOutlined, PlusOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, CloudUploadOutlined } from '@ant-design/icons';
+import Link from 'next/link';
 
 const { Header, Sider, Content } = Layout;
 const { Title, Text } = Typography;
 const { Dragger } = Upload;
 
 export default function Playground() {
-  const [files, setFiles] = useState([]); // [{ file: 'path/to/a.html', png: 'path/to/a.png' | null }]
+  const [mode, setMode] = useState('upload'); // 'upload' | 'live'
+  const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [pasteContent, setPasteContent] = useState('');
-  const [pasteType, setPasteType] = useState('html'); // 'html' | 'jsx'
+  const [pasteType, setPasteType] = useState('html');
   const [pasteName, setPasteName] = useState('widget.html');
+  const [liveCode, setLiveCode] = useState('');
+  const [liveType, setLiveType] = useState('html');
+  const [livePng, setLivePng] = useState(null);
+  const [liveRendering, setLiveRendering] = useState(false);
 
   // Reset paste filename when type changes
   useEffect(() => {
@@ -119,90 +125,182 @@ export default function Playground() {
     }
   };
 
+  useEffect(() => {
+    if (mode !== 'live') return;
+    if (!liveCode.trim()) {
+      setLivePng(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      renderLive();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [liveCode, liveType, mode]);
+
+  const renderLive = async () => {
+    const code = liveCode.trim();
+    if (!code) {
+      setLivePng(null);
+      return;
+    }
+    setLiveRendering(true);
+    try {
+      const fileName = `live.${liveType}`;
+      const saveRes = await fetch('/api/playground/save-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: fileName, content: code })
+      });
+      if (!saveRes.ok) throw new Error('Save failed');
+
+      const renderRes = await fetch(`/api/playground/render-one?file=${encodeURIComponent(fileName)}&force=1`);
+      const data = await renderRes.json();
+      if (renderRes.ok && data.png) {
+        setLivePng(`${data.png}?t=${Date.now()}`);
+      } else {
+        throw new Error(data?.error || 'render failed');
+      }
+    } catch (err) {
+      console.error('Live render failed:', err);
+      setLivePng(null);
+    } finally {
+      setLiveRendering(false);
+    }
+  };
+
   const anyRenderable = files.some((f) => !f.png);
 
   return (
     <Layout className="layout">
-      <Header style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <Title level={4} style={{ color: '#fff', margin: 0 }}>Widget Playground</Title>
+      <Header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px' }}>
+        <Title level={4} style={{ color: '#0f1419', margin: 0, fontWeight: 700 }}>Widget2Code</Title>
+        <div style={{ display: 'flex', gap: 8, marginLeft: 16 }}>
+          <Link href="/" passHref legacyBehavior>
+            <a style={{ textDecoration: 'none' }}>
+              <Button type="default" icon={<EyeOutlined />}>
+                Viewer
+              </Button>
+            </a>
+          </Link>
+          <Link href="/playground" passHref legacyBehavior>
+            <a style={{ textDecoration: 'none' }}>
+              <Button type="primary" icon={<ExperimentOutlined />}>
+                Playground
+              </Button>
+            </a>
+          </Link>
+        </div>
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { label: 'Upload', value: 'upload', icon: <CloudUploadOutlined /> },
+            { label: 'Live Paste', value: 'live', icon: <ThunderboltOutlined /> }
+          ]}
+          style={{ marginLeft: 24 }}
+        />
         <div style={{ flex: 1 }} />
-        <Space>
-          <Button icon={<DeleteOutlined />} onClick={async () => { await fetch('/api/playground/reset', { method: 'POST' }); await refreshList(); }}>Clear</Button>
-          <Button type="primary" icon={<PlayCircleOutlined />} loading={rendering} disabled={!files.length || !anyRenderable} onClick={onRenderAll}>Render All</Button>
-        </Space>
+        {mode === 'upload' && (
+          <Space>
+            <Button icon={<DeleteOutlined />} onClick={async () => { await fetch('/api/playground/reset', { method: 'POST' }); await refreshList(); }}>Clear</Button>
+            <Button type="primary" icon={<PlayCircleOutlined />} loading={rendering} disabled={!files.length || !anyRenderable} onClick={onRenderAll}>Render All</Button>
+          </Space>
+        )}
       </Header>
       <Layout style={{ height: 'calc(100vh - 64px)' }}>
-        <Sider width={360} className="appSider">
-          <div className="siderHeader">
-            <Title level={5} style={{ margin: 0 }}>Add Files</Title>
-          </div>
-          <div className="siderScroll" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Dragger {...uploadProps} style={{ borderRadius: 10 }}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">Click or drag files/folder to upload</p>
-              <p className="ant-upload-hint">HTML, JSX, and any assets; folder structure preserved</p>
-            </Dragger>
-            <Divider style={{ margin: '8px 0' }} />
-            <div>
-              <Title level={5} style={{ margin: '4px 0 8px' }}>Paste Code</Title>
-              <Space style={{ marginBottom: 8 }} wrap>
-                <Radio.Group value={pasteType} onChange={(e) => setPasteType(e.target.value)}>
-                  <Radio.Button value="html">HTML</Radio.Button>
-                  <Radio.Button value="jsx">JSX</Radio.Button>
-                </Radio.Group>
-                <Input
-                  value={pasteName}
-                  onChange={(e) => setPasteName(e.target.value)}
-                  placeholder={`widget.${pasteType}`}
-                  style={{ width: 200 }}
-                />
-                <Button icon={<PlusOutlined />} onClick={handlePasteSave} disabled={!pasteContent.trim()}>Add</Button>
-              </Space>
-              <Input.TextArea
-                rows={6}
-                value={pasteContent}
-                onChange={(e) => setPasteContent(e.target.value)}
-                placeholder={`Paste ${pasteType.toUpperCase()} here...`}
-              />
-            </div>
 
-            <Divider style={{ margin: '8px 0' }} />
-            <Title level={5} style={{ margin: '4px 0 8px' }}>Files</Title>
-            {loading ? (
-              <div className="center" style={{ height: 120 }}><Spin /></div>
-            ) : files.length ? (
-              <List
-                size="small"
-                dataSource={files}
-                renderItem={(item) => (
-                  <List.Item>
-                    <List.Item.Meta
-                      title={<Text>{item.file}</Text>}
-                      description={item.png ? <Text type="secondary">Rendered</Text> : <Text type="secondary">Pending</Text>}
-                    />
-                  </List.Item>
+        {mode === 'upload' ? (
+          <>
+            <Sider width={360} className="appSider">
+              <div className="siderHeader">
+                <Title level={5} style={{ margin: 0 }}>Add Files</Title>
+              </div>
+              <div className="siderScroll" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Dragger {...uploadProps} style={{ borderRadius: 10 }}>
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p className="ant-upload-text">Click or drag files/folder to upload</p>
+                  <p className="ant-upload-hint">HTML, JSX, and any assets; folder structure preserved</p>
+                </Dragger>
+
+                <Divider style={{ margin: '8px 0' }} />
+                <Title level={5} style={{ margin: '4px 0 8px' }}>Uploaded Files</Title>
+                {loading ? (
+                  <div className="center" style={{ height: 120 }}><Spin /></div>
+                ) : files.length ? (
+                  <List
+                    size="small"
+                    dataSource={files}
+                    renderItem={(item) => (
+                      <List.Item>
+                        <List.Item.Meta
+                          title={<Text>{item.file}</Text>}
+                          description={item.png ? <Text type="secondary">Rendered</Text> : <Text type="secondary">Pending</Text>}
+                        />
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Empty description="No files yet" />
                 )}
+              </div>
+            </Sider>
+            <Content style={{ padding: 16, overflow: 'auto' }}>
+              <Space align="center" style={{ marginBottom: 8 }}>
+                <Title level={5} style={{ margin: 0 }}>Previews</Title>
+                {rendering ? <Spin size="small" /> : null}
+              </Space>
+              {!files.length ? (
+                <Empty description="Upload or paste code to begin" style={{ marginTop: 48 }} />
+              ) : (
+                <div className="grid">
+                  {files.map((f) => (
+                    <PreviewBox key={f.file} file={f.file} png={f.png} />
+                  ))}
+                </div>
+              )}
+            </Content>
+          </>
+        ) : (
+          <div style={{ display: 'flex', height: 'calc(100vh - 140px)' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid #eef0f3' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #eef0f3', background: '#fafafa' }}>
+                <Space>
+                  <Text strong>Code Editor</Text>
+                  <Radio.Group value={liveType} onChange={(e) => setLiveType(e.target.value)} size="small">
+                    <Radio.Button value="html">HTML</Radio.Button>
+                    <Radio.Button value="jsx">JSX</Radio.Button>
+                  </Radio.Group>
+                </Space>
+              </div>
+              <Input.TextArea
+                value={liveCode}
+                onChange={(e) => setLiveCode(e.target.value)}
+                placeholder={`Paste your ${liveType.toUpperCase()} code here...\n\nIt will auto-render as you type!`}
+                style={{ flex: 1, resize: 'none', border: 'none', borderRadius: 0, fontFamily: 'monospace', fontSize: 14 }}
               />
-            ) : (
-              <Empty description="No files yet" />
-            )}
-          </div>
-        </Sider>
-        <Content style={{ padding: 16, overflow: 'auto' }}>
-          <Space align="center" style={{ marginBottom: 8 }}>
-            <Title level={5} style={{ margin: 0 }}>Previews</Title>
-            {rendering ? <Spin size="small" /> : null}
-          </Space>
-          {!files.length ? (
-            <Empty description="Upload or paste code to begin" style={{ marginTop: 48 }} />
-          ) : (
-            <div className="grid">
-              {files.map((f) => (
-                <PreviewBox key={f.file} file={f.file} png={f.png} />
-              ))}
             </div>
-          )}
-        </Content>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text strong>Live Preview</Text>
+                {liveRendering && <Spin size="small" />}
+              </div>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', overflow: 'auto', padding: 16 }}>
+                {livePng ? (
+                  <img
+                    key={livePng}
+                    alt="live preview"
+                    src={`/api/playground/file?file=${encodeURIComponent(livePng.split('?')[0])}&t=${livePng.split('?t=')[1] || Date.now()}`}
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                ) : liveCode.trim() ? (
+                  liveRendering ? <Spin tip="Rendering..." /> : <Empty description="Render failed" />
+                ) : (
+                  <Empty description="Start typing to see live preview" />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </Layout>
     </Layout>
   );

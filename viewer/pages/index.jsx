@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Layout, Typography, Input, List, Avatar, Empty, Spin, Flex, Divider, Modal, Button } from "antd";
-import { MenuFoldOutlined, MenuUnfoldOutlined } from "@ant-design/icons";
+import { Layout, Typography, Input, List, Avatar, Empty, Spin, Flex, Divider, Modal, Button, Segmented } from "antd";
+import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined } from "@ant-design/icons";
+import Link from "next/link";
 import RunPicker from "../components/RunPicker";
 import PreviewCard from "../components/PreviewCard";
 
@@ -104,8 +105,24 @@ export default function Home() {
 
   return (
     <Layout className="layout">
-      <Header style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <Title level={4} style={{ color: "#fff", margin: 0 }}>Widget2Code Viewer</Title>
+      <Header style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 24px" }}>
+        <Title level={4} style={{ color: "#0f1419", margin: 0, fontWeight: 700 }}>Widget2Code</Title>
+        <div style={{ display: "flex", gap: 8, marginLeft: 16 }}>
+          <Link href="/" passHref legacyBehavior>
+            <a style={{ textDecoration: 'none' }}>
+              <Button type="primary" icon={<EyeOutlined />}>
+                Viewer
+              </Button>
+            </a>
+          </Link>
+          <Link href="/playground" passHref legacyBehavior>
+            <a style={{ textDecoration: 'none' }}>
+              <Button type="default" icon={<ExperimentOutlined />}>
+                Playground
+              </Button>
+            </a>
+          </Link>
+        </div>
         <div style={{ flex: 1 }} />
         <RunPicker runs={runs} value={run} onChange={setRun} />
       </Header>
