@@ -20,10 +20,14 @@ export default function handler(req, res) {
     if (d.isDirectory()) {
       const cat = d.name;
       const catDir = path.join(base, cat);
+      // Only include renderable source files; exclude generated PNGs and misc files
+      const allowed = new Set([".html", ".jsx", ".js"]);
       const files = fs
         .readdirSync(catDir, { withFileTypes: true })
         .filter((f) => f.isFile())
-        .map((f) => path.join(catDir, f.name));
+        .map((f) => path.join(catDir, f.name))
+        .filter((f) => allowed.has(path.extname(f).toLowerCase()));
+
       categories[cat] = files
         .map((f) => ({
           name: path.basename(f, path.extname(f)),
