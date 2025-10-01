@@ -96,7 +96,11 @@ async function* walk(dir) {
     if (e.isDirectory()) {
       yield* walk(full);
     } else if (e.isFile() && /\.jsx$/.test(e.name)) {
-      yield full;
+      const { dir: d, name } = path.parse(full);
+      const pngPath = path.join(d, `${name}.png`);
+      if (!fs.existsSync(pngPath)) {
+        yield full;
+      }
     }
   }
 }
