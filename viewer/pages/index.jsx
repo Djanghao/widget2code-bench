@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Typography, Input, Empty, Spin, Flex, Divider, Modal, Button } from "antd";
 import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined } from "@ant-design/icons";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import RunPicker from "../components/RunPicker";
 import PreviewCard from "../components/PreviewCard";
 
 const { Title, Text } = Typography;
 
 export default function Home() {
+  const router = useRouter();
   const [runs, setRuns] = useState([]);
   const [run, setRun] = useState(null);
   const [images, setImages] = useState([]);
@@ -18,14 +20,19 @@ export default function Home() {
   const [results, setResults] = useState({});
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
-  const [renderStatus, setRenderStatus] = useState('idle'); // idle | checking | rendering | ready
+  const [renderStatus, setRenderStatus] = useState('idle');
 
   useEffect(() => {
     fetch("/api/runs").then((r) => r.json()).then((d) => {
       setRuns(d.runs || []);
-      if (d.runs && d.runs.length > 0) setRun(d.runs[0].name);
+      const runFromUrl = router.query.run;
+      if (runFromUrl && d.runs && d.runs.some(r => r.name === runFromUrl)) {
+        setRun(runFromUrl);
+      } else if (d.runs && d.runs.length > 0) {
+        setRun(d.runs[0].name);
+      }
     });
-  }, []);
+  }, [router.query.run]);
 
   useEffect(() => {
     if (!run) return;
@@ -126,11 +133,11 @@ export default function Home() {
           runs={runs}
           value={run}
           onChange={(v) => {
-            // Prevent stale thumbnails from firing against the new run
             setLoadingImages(true);
             setImages([]);
             setSelected(null);
             setRun(v);
+            router.push(`/?run=${encodeURIComponent(v)}`, undefined, { shallow: true });
           }}
         />
       </header>
