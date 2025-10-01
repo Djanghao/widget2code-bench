@@ -22,6 +22,7 @@ export default function PreviewCard({
   cardHeight = 600,
   showCodeTab = true,
   renderStatus,
+  prompt,
 }) {
   const [compareOpen, setCompareOpen] = useState(false);
   const [loading, setLoading] = useState(Boolean(run && filePath));
@@ -218,6 +219,24 @@ export default function PreviewCard({
                     placeholder={codePlaceholder}
                     copyMessage="Code copied"
                     loading={codeLoading}
+                    fullHeight={true}
+                  />
+                </div>
+              ),
+            }] : []),
+            ...(showCodeTab && prompt ? [{
+              key: 'prompt',
+              label: 'Prompt',
+              children: (
+                <div style={variant === 'fill'
+                  ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }
+                  : { height: contentHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  <CodeViewer
+                    label="Prompt"
+                    content={prompt}
+                    placeholder="No prompt available"
+                    copyMessage="Prompt copied"
+                    loading={false}
                     fullHeight={true}
                   />
                 </div>

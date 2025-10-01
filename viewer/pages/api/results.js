@@ -36,7 +36,7 @@ export default function handler(req, res) {
             ext: path.extname(f).toLowerCase(),
             path: relPath,
             codeUrl: `/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(relPath)}`,
-            prompt: readPrompt(promptsRoot, cat, path.basename(f, path.extname(f))),
+            prompt: readPrompt(run, image, cat, path.basename(f, path.extname(f))),
           };
         })
         .sort((a, b) => (a.name > b.name ? 1 : -1));
@@ -58,14 +58,12 @@ function readRunMeta(p) {
   }
 }
 
-function readPrompt(root, category, name) {
-  if (!root || !category || !name) return null;
-  if (category.includes("..") || category.includes("\\")) return null;
-  const base = path.resolve(root);
-  const file = path.resolve(base, category, `${name}.md`);
-  if (!file.startsWith(base)) return null;
+function readPrompt(run, image, category, name) {
+  const metaFile = path.join(RESULTS_ROOT, run, image, category, `${name}.meta.json`);
   try {
-    return fs.readFileSync(file, "utf8");
+    const raw = fs.readFileSync(metaFile, "utf8");
+    const meta = JSON.parse(raw);
+    return meta.prompt || null;
   } catch (_) {
     return null;
   }
