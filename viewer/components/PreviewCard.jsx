@@ -3,12 +3,62 @@ import { useMemo, useState, useEffect, useRef } from "react";
 
 const { Text } = Typography;
 
-export default function PreviewCard({ title, code, prompt, sourceUrl, run, filePath }) {
+export default function PreviewCard({
+  title,
+  code,
+  codeUrl,
+  sourceUrl,
+  run,
+  filePath,
+  initialPngUrl,
+  loading: externalLoading = false,
+  showCompare = false,
+  renderPadding = 40,
+  renderMaxHeight = 420,
+  variant = 'default',
+  renderEmptyMessage = 'No render available',
+  codePlaceholder = 'No code available',
+  cardStyle,
+  cardHeight = 600,
+}) {
   const [compareOpen, setCompareOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [pngUrl, setPngUrl] = useState(null);
+  const [loading, setLoading] = useState(Boolean(run && filePath));
+  const [pngUrl, setPngUrl] = useState(initialPngUrl || null);
   const [dimensions, setDimensions] = useState(null);
   const [origDimensions, setOrigDimensions] = useState(null);
+  const [resolvedCode, setResolvedCode] = useState(code || "");
+  const [codeLoading, setCodeLoading] = useState(false);
+
+  useEffect(() => {
+    setPngUrl(initialPngUrl || null);
+  }, [initialPngUrl]);
+
+  useEffect(() => {
+    setResolvedCode(code || "");
+  }, [code]);
+
+  useEffect(() => {
+    if (!codeUrl || code) return;
+    let cancelled = false;
+    setCodeLoading(true);
+    fetch(codeUrl)
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`Failed to load code (${r.status})`))))
+      .then((text) => {
+        if (!cancelled) setResolvedCode(text || "");
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Code fetch failed:', err);
+          message.error('Failed to load code');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCodeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [codeUrl, code]);
 
   useEffect(() => {
     if (!run || !filePath) return;
@@ -19,7 +69,7 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
       .then((data) => {
         if (data.pngPath) {
           const url = `/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(data.pngPath)}`;
-          setPngUrl(url);
+          setPngUrl(`${url}&t=${Date.now()}`);
         } else if (data.error) {
           console.error('Render error:', data.error);
         }
@@ -42,85 +92,148 @@ export default function PreviewCard({ title, code, prompt, sourceUrl, run, fileP
     setOrigDimensions({ width: img.naturalWidth, height: img.naturalHeight });
   };
 
-  const promptText = prompt ?? "";
+  const effectiveLoading = loading || externalLoading;
+
+  const CARD_BODY_PADDING = 12;
+
+  const cardBaseStyle = variant === 'fill'
+    ? { height: '100%', display: 'flex', flexDirection: 'column' }
+    : { height: cardHeight, display: 'flex', flexDirection: 'column' };
+  const cardBodyStyle = variant === 'fill'
+    ? { padding: CARD_BODY_PADDING, paddingBottom: CARD_BODY_PADDING, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }
+    : { padding: CARD_BODY_PADDING, paddingBottom: CARD_BODY_PADDING, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 };
+  const mergedCardStyle = cardBaseStyle || cardStyle ? { ...(cardBaseStyle || {}), ...(cardStyle || {}) } : undefined;
+  const CARD_HEADER_HEIGHT = 50;
+  const TABS_BAR_HEIGHT = 46;
+  const MEASUREMENT_OVERLAY_SPACE = 120;
+
+  const contentHeight = variant === 'fill'
+    ? undefined
+    : cardHeight - CARD_HEADER_HEIGHT - TABS_BAR_HEIGHT - (CARD_BODY_PADDING * 2);
+  const effectiveRenderMaxHeight = variant === 'fill'
+    ? '100%'
+    : contentHeight - MEASUREMENT_OVERLAY_SPACE;
+
+  const tabsWrapperStyle = variant === 'fill'
+    ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' }
+    : { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' };
+  const renderContentWrapperStyle = variant === 'fill'
+    ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' }
+    : { height: contentHeight, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' };
+  const renderAreaStyle = variant === 'fill'
+    ? {
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f5f5f5',
+        borderRadius: 8,
+        overflow: 'visible',
+      }
+    : {
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f5f5f5',
+        borderRadius: 8,
+        overflow: 'visible',
+      };
+  const previewMaxHeight = effectiveRenderMaxHeight;
+
+  const actions = [];
+  actions.push(
+    <Tooltip key="download" title={pngUrl ? "Download PNG" : "Render first"}>
+      <Button
+        size="small"
+        href={pngUrl || undefined}
+        download={`${String(title || 'render').replace(/\s+/g, '_')}.png`}
+        disabled={!pngUrl}
+      >
+        Download
+      </Button>
+    </Tooltip>
+  );
+
+  if (showCompare) {
+    actions.push(
+      <Button key="compare" size="small" onClick={() => setCompareOpen(true)} disabled={!sourceUrl}>
+        Compare
+      </Button>
+    );
+  }
 
   return (
-    <Card size="small" title={<Text strong>{title}</Text>} bodyStyle={{ padding: 12 }}>
-      <Tabs
-        size="small"
-        tabBarExtraContent={{
-          right: (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Tooltip title={pngUrl ? "Download PNG" : "Render first"}>
-                <Button
-                  size="small"
-                  href={pngUrl || undefined}
-                  download={`${String(title || 'render').replace(/\s+/g, '_')}.png`}
-                  disabled={!pngUrl}
-                >
-                  Download
-                </Button>
-              </Tooltip>
-              <Button size="small" onClick={() => setCompareOpen(true)} disabled={!sourceUrl}>
-                Compare
-              </Button>
-            </div>
-          ),
-        }}
-        items={[
-          {
-            key: "render",
-            label: "Render",
-            children: (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 420, background: '#f5f5f5', borderRadius: 8 }}>
-                {loading ? (
-                  <Spin size="large" />
-                ) : pngUrl ? (
-                  <WidgetPreview pngUrl={pngUrl} dimensions={dimensions} onLoad={handleImageLoad} />
-                ) : (
-                  <Text type="secondary">Failed to render</Text>
-                )}
-              </div>
-            ),
-          },
-          {
-            key: "code",
-            label: "Code",
-            children: (
-              <CodeViewer
-                label="Code"
-                content={code || ""}
-                placeholder="No code available"
-                copyMessage="Code copied"
-              />
-            ),
-          },
-          {
-            key: "prompt",
-            label: "Prompt",
-            children: (
-              <CodeViewer
-                label="Prompt"
-                content={promptText}
-                placeholder="No prompt available"
-                copyMessage="Prompt copied"
-              />
-            ),
-          },
-        ]}
-      />
-      <CompareModal
-        open={compareOpen}
-        onClose={() => setCompareOpen(false)}
-        title={title}
-        sourceUrl={sourceUrl}
-        renderUrl={pngUrl}
-        loading={loading}
-        origDimensions={origDimensions}
-        renderDimensions={dimensions}
-        onOriginalLoad={handleOriginalLoad}
-        onRenderLoad={handleImageLoad}
-      />
+    <Card
+      size="small"
+      title={<Text strong>{title}</Text>}
+      style={mergedCardStyle}
+      bodyStyle={cardBodyStyle}
+    >
+      <div style={tabsWrapperStyle}>
+        <Tabs
+          size="small"
+          tabBarExtraContent={actions.length ? { right: (<div style={{ display: 'flex', gap: 8 }}>{actions}</div>) } : undefined}
+          items={[
+            {
+              key: 'render',
+              label: 'Render',
+              children: (
+                <div style={renderContentWrapperStyle}>
+                  <div style={renderAreaStyle}>
+                    {effectiveLoading ? (
+                      <Spin size="large" />
+                    ) : pngUrl ? (
+                      <WidgetPreview
+                        pngUrl={pngUrl}
+                        dimensions={dimensions}
+                        onLoad={handleImageLoad}
+                        maxHeight={previewMaxHeight}
+                        padding={renderPadding}
+                      />
+                    ) : (
+                      <Text type="secondary">{renderEmptyMessage}</Text>
+                    )}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: 'code',
+              label: 'Code',
+              children: (
+                <div style={variant === 'fill' ? undefined : { height: contentHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  <CodeViewer
+                    label="Code"
+                    content={resolvedCode}
+                    placeholder={codePlaceholder}
+                    copyMessage="Code copied"
+                    loading={codeLoading}
+                    fullHeight={true}
+                  />
+                </div>
+              ),
+            },
+          ]}
+          style={variant === 'fill' ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}
+        />
+      </div>
+      {showCompare ? (
+        <CompareModal
+          open={compareOpen}
+          onClose={() => setCompareOpen(false)}
+          title={title}
+          sourceUrl={sourceUrl}
+          renderUrl={pngUrl}
+          loading={effectiveLoading}
+          origDimensions={origDimensions}
+          renderDimensions={dimensions}
+          onOriginalLoad={handleOriginalLoad}
+          onRenderLoad={handleImageLoad}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -485,12 +598,12 @@ function CompareModal({
   );
 }
 
-function CodeViewer({ label, content, placeholder, copyMessage }) {
+function CodeViewer({ label, content, placeholder, copyMessage, loading = false, fullHeight = false }) {
   const normalized = useMemo(() => (content ?? "").replace(/\r\n/g, "\n"), [content]);
   const hasContent = normalized.length > 0;
 
   const handleCopy = async () => {
-    if (!hasContent) return;
+    if (!hasContent || loading) return;
     try {
       if (typeof navigator === "undefined" || !navigator.clipboard) {
         message.warning("Clipboard unavailable");
@@ -505,7 +618,7 @@ function CodeViewer({ label, content, placeholder, copyMessage }) {
   };
 
   return (
-    <div className="codeEditor">
+    <div className="codeEditor" style={fullHeight ? { height: '100%', display: 'flex', flexDirection: 'column' } : undefined}>
       <div className="codeEditorToolbar">
         <div className="codeEditorDots" aria-hidden="true">
           <span />
@@ -513,16 +626,22 @@ function CodeViewer({ label, content, placeholder, copyMessage }) {
           <span />
         </div>
         <Text type="secondary" style={{ fontSize: 12 }}>{label}</Text>
-        <Tooltip title={hasContent ? "Copy" : "Nothing to copy"}>
-          <Button size="small" type="text" onClick={handleCopy} disabled={!hasContent}>
+        <Tooltip title={hasContent && !loading ? "Copy" : loading ? "Loading" : "Nothing to copy"}>
+          <Button size="small" type="text" onClick={handleCopy} disabled={!hasContent || loading}>
             Copy
           </Button>
         </Tooltip>
       </div>
-      <div className="codeEditorBody">
-        <pre className={`codeEditorContent${hasContent ? "" : " codeEditorEmpty"}`}>
-          {hasContent ? normalized : placeholder || ""}
-        </pre>
+      <div className="codeEditorBody" style={fullHeight ? { flex: 1, overflow: 'auto' } : undefined}>
+        {loading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: fullHeight ? '100%' : 180 }}>
+            <Spin />
+          </div>
+        ) : (
+          <pre className={`codeEditorContent${hasContent ? "" : " codeEditorEmpty"}`} style={fullHeight ? { minHeight: '100%', flex: 1 } : undefined}>
+            {hasContent ? normalized : placeholder || ""}
+          </pre>
+        )}
       </div>
     </div>
   );

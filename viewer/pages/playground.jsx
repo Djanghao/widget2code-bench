@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Layout, Typography, Button, Divider, Upload, message, Input, Radio, List, Empty, Spin, Space, Card, Tooltip, Segmented, Tabs } from 'antd';
-import { InboxOutlined, FolderOpenOutlined, UploadOutlined, DeleteOutlined, DownloadOutlined, PlayCircleOutlined, PlusOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, CloudUploadOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { useEffect, useRef, useState } from 'react';
+import { Layout, Typography, Button, Upload, message, Empty, Spin, Space, Segmented } from 'antd';
+import { InboxOutlined, DeleteOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, CloudUploadOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import PreviewCard from '../components/PreviewCard';
 import Link from 'next/link';
 
 const { Header, Sider, Content } = Layout;
-const { Title, Text } = Typography;
+const { Title } = Typography;
 const { Dragger } = Upload;
 
 export default function Playground() {
   const [mode, setMode] = useState('upload'); // 'upload' | 'live'
   const [files, setFiles] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [listStamp, setListStamp] = useState(Date.now());
   const [rendering, setRendering] = useState(false);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [pasteContent, setPasteContent] = useState('');
@@ -43,15 +44,13 @@ export default function Playground() {
   }, []);
 
   const refreshList = async () => {
-    setLoading(true);
     try {
       const r = await fetch('/api/playground/list');
       const d = await r.json();
       setFiles(d.items || []);
+      setListStamp(Date.now());
     } catch (err) {
       console.error('list failed', err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -259,7 +258,13 @@ export default function Playground() {
                 ) : (
                   <div className="grid">
                     {files.map((f) => (
-                      <PreviewBox key={f.file} file={f.file} png={f.png} />
+                      <PlaygroundPreviewCard
+                        key={f.file}
+                        file={f.file}
+                        png={f.png}
+                        stamp={listStamp}
+                        isRendering={rendering}
+                      />
                     ))}
                   </div>
                 )}
@@ -271,19 +276,17 @@ export default function Playground() {
                 <Title level={5} style={{ margin: 0 }}>Live Preview</Title>
                 {liveRendering && <Spin size="small" />}
               </div>
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', padding: 16, minHeight: 0 }}>
-                {livePng ? (
-                  <img
-                    key={livePng}
-                    alt="live preview"
-                    src={`/api/playground/file?file=${encodeURIComponent(livePng.split('?')[0])}&t=${livePng.split('?t=')[1] || Date.now()}`}
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                ) : liveCode.trim() ? (
-                  liveRendering ? <Spin tip="Rendering..." /> : <Empty description="Render failed" />
-                ) : (
-                  <Empty description="Start typing to see live preview" />
-                )}
+              <div style={{ flex: 1, display: 'flex', alignItems: 'stretch', justifyContent: 'center', background: '#f5f5f5', padding: 16, minHeight: 0 }}>
+                <PreviewCard
+                  title={`Live Preview (${liveType.toUpperCase()})`}
+                  code={liveCode}
+                  initialPngUrl={toPlaygroundFileUrl(livePng)}
+                  loading={liveRendering && !livePng}
+                  renderEmptyMessage={liveCode.trim() ? 'Render failed' : 'Start typing to see live preview'}
+                  variant="fill"
+                  renderPadding={32}
+                  cardStyle={{ width: '100%', maxWidth: '100%' }}
+                />
               </div>
             </>
           )}
@@ -374,51 +377,32 @@ function LiveCodeEditor({ code, type, onCodeChange, onTypeChange }) {
   );
 }
 
-function PreviewBox({ file, png }) {
-  const [loading, setLoading] = useState(false);
-  const [pngPath, setPngPath] = useState(png || null);
-
-  useEffect(() => { setPngPath(png || null); }, [png]);
-
-  const doRender = async () => {
-    setLoading(true);
-    try {
-      const r = await fetch(`/api/playground/render-one?file=${encodeURIComponent(file)}`);
-      const d = await r.json();
-      if (r.ok && d.png) setPngPath(d.png);
-      else throw new Error(d?.error || 'render failed');
-    } catch (err) {
-      message.error('Render failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadHref = pngPath ? `/api/playground/file?file=${encodeURIComponent(pngPath)}` : undefined;
+function PlaygroundPreviewCard({ file, png, stamp, isRendering }) {
+  const pngUrl = toPlaygroundFileUrl(png, stamp);
+  const codeUrl = `/api/playground/file?file=${encodeURIComponent(file)}`;
+  const emptyMessage = isRendering ? 'Rendering...' : 'Render to see preview';
 
   return (
-    <Card
-      size="small"
-      title={<Text strong style={{ wordBreak: 'break-all' }}>{file}</Text>}
-      extra={<Space>
-        <Tooltip title="Render">
-          <Button size="small" icon={<PlayCircleOutlined />} onClick={doRender} loading={loading} />
-        </Tooltip>
-        <Tooltip title={pngPath ? 'Download PNG' : 'Render first'}>
-          <Button size="small" icon={<DownloadOutlined />} disabled={!pngPath} href={downloadHref} download={file.replace(/\.(html|jsx|js)$/i, '.png')} />
-        </Tooltip>
-      </Space>}
-      styles={{ body: { padding: 12 } }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 220, background: '#f5f5f5', borderRadius: 8 }}>
-        {pngPath ? (
-          <img alt={file} src={`/api/playground/file?file=${encodeURIComponent(pngPath)}`} style={{ maxWidth: '100%', maxHeight: 260 }} />
-        ) : loading ? (
-          <Spin />
-        ) : (
-          <Text type="secondary">No PNG yet</Text>
-        )}
-      </div>
-    </Card>
+    <PreviewCard
+      title={file}
+      initialPngUrl={pngUrl}
+      codeUrl={codeUrl}
+      renderEmptyMessage={emptyMessage}
+      renderPadding={32}
+      renderMaxHeight={360}
+      loading={!png && isRendering}
+    />
   );
+}
+
+function toPlaygroundFileUrl(relPath, stamp) {
+  if (!relPath) return null;
+  const [clean, query] = String(relPath).split('?');
+  let token = typeof stamp === 'number' ? stamp : undefined;
+  if (!token && query) {
+    const match = query.match(/(?:^|&)t=([^&]+)/);
+    if (match) token = match[1];
+  }
+  if (!token) token = Date.now();
+  return `/api/playground/file?file=${encodeURIComponent(clean)}&t=${token}`;
 }
