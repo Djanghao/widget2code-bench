@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from bs4 import BeautifulSoup
+from PIL import Image
 
 try:
     from dotenv import load_dotenv
@@ -109,6 +110,20 @@ def prettify_html(code: str) -> str:
         pretty += "\n"
     return pretty
 
+def build_size_constraint_text(image_path: Path, size_flag: bool, aspect_ratio_flag: bool) -> tuple[str, dict]:
+    if not size_flag and not aspect_ratio_flag:
+        return "", {}
+    img = Image.open(image_path)
+    width, height = img.size
+    ratio = width / height
+    size_info = {"width": width, "height": height, "aspect_ratio": round(ratio, 2)}
+    if size_flag and aspect_ratio_flag:
+        return f"The widget must match the screenshot size ({width}×{height} px) and maintain its aspect ratio (≈{ratio:.2f}:1) as closely as possible.", size_info
+    elif size_flag:
+        return f"The widget must match the screenshot size ({width}×{height} px) as closely as possible.", size_info
+    else:
+        return f"The widget must maintain the screenshot's aspect ratio (≈{ratio:.2f}:1) as closely as possible.", size_info
+
 def run_one(
     image_path: Path,
     category: str,
@@ -121,7 +136,29 @@ def run_one(
     max_tokens: int,
     timeout: int,
     thinking: Optional[bool],
+    size_flag: bool,
+    aspect_ratio_flag: bool,
 ) -> Tuple[Path, Optional[str], Optional[str]]:
+    constraint_text, size_info = build_size_constraint_text(image_path, size_flag, aspect_ratio_flag)
+    if constraint_text:
+        prompt_text = prompt_text + "\n" + constraint_text
+
+    out_cat = out_dir / category
+    out_cat.mkdir(parents=True, exist_ok=True)
+    base_name = prompt_file.stem
+    meta_out_file = out_cat / f"{base_name}.meta.json"
+    meta_data = {
+        "prompt": prompt_text,
+        "category": category,
+        "prompt_file": str(prompt_file),
+        "size_flag": size_flag,
+        "aspect_ratio_flag": aspect_ratio_flag,
+    }
+    if size_info:
+        meta_data["image_size"] = {"width": size_info["width"], "height": size_info["height"]}
+        meta_data["aspect_ratio"] = size_info["aspect_ratio"]
+    meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
     llm = LLM(
         model=model,
         temperature=temperature,
@@ -139,9 +176,6 @@ def run_one(
         return (prompt_file, None, f"ERROR: {e}")
     code = extract_code(raw)
     ext = decide_extension(code)
-    out_cat = out_dir / category
-    out_cat.mkdir(parents=True, exist_ok=True)
-    base_name = prompt_file.stem
     expected_ext = ".html" if category.startswith("html") else ".jsx"
     file_ext = ext if ext in (".html", ".jsx") else expected_ext
     out_file = out_cat / f"{base_name}{file_ext}"
@@ -168,6 +202,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--include", nargs="*", help="Optional glob filters relative to prompts root, e.g. 'react/*' 'html/1-*' ")
     p.add_argument("--exclude", nargs="*", help="Optional glob filters to exclude")
     p.add_argument("--suffix", default="", help="Optional extra suffix for run directory name")
+    p.add_argument("--size", action="store_true", help="Append image size constraint to prompt")
+    p.add_argument("--aspect-ratio", action="store_true", help="Append aspect ratio constraint to prompt")
     args = p.parse_args(argv)
 
     images_dir = Path(args.images_dir)
@@ -205,6 +241,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         "prompts_root": str(prompts_root),
         "include": args.include,
         "exclude": args.exclude,
+        "size": args.size,
+        "aspect_ratio": args.aspect_ratio,
         "created_at": ts,
     }
     (run_dir / "run.meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -236,6 +274,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                         args.max_tokens,
                         args.timeout,
                         args.thinking,
+                        args.size,
+                        args.aspect_ratio,
                     )
                 )
 
