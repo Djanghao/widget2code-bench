@@ -10,11 +10,22 @@ function runRenderer(scriptName, args) {
     const scriptPath = path.join(__dirname, 'bin', scriptName);
     const proc = spawn('node', [scriptPath, ...args], {
       stdio: 'pipe',
-      cwd: process.cwd()
+      cwd: process.cwd(),
+      detached: false
     });
 
     let stdout = '';
     let stderr = '';
+    let resolved = false;
+
+    const cleanup = () => {
+      if (!resolved) {
+        resolved = true;
+        if (proc.stdout) proc.stdout.removeAllListeners();
+        if (proc.stderr) proc.stderr.removeAllListeners();
+        proc.removeAllListeners();
+      }
+    };
 
     proc.stdout.on('data', (data) => {
       stdout += data.toString();
@@ -27,6 +38,7 @@ function runRenderer(scriptName, args) {
     });
 
     proc.on('close', (code) => {
+      cleanup();
       if (code === 0) {
         resolve({ stdout, stderr });
       } else {
@@ -35,6 +47,7 @@ function runRenderer(scriptName, args) {
     });
 
     proc.on('error', (err) => {
+      cleanup();
       reject(err);
     });
   });

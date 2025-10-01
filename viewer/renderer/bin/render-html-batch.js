@@ -4,7 +4,10 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { EventEmitter } from 'node:events';
 import { chromium } from 'playwright';
+
+EventEmitter.defaultMaxListeners = 20;
 
 function log(...args) { console.log('[render-html-batch]', ...args); }
 

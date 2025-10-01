@@ -7,6 +7,8 @@ function safe(s) {
   return s && typeof s === 'string' && !s.includes('..') && !s.includes('\\') && s.length < 512;
 }
 
+const activeRenders = new Map();
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
@@ -27,24 +29,36 @@ export default async function handler(req, res) {
     return;
   }
 
+  const key = `${run}/${image}`;
+
+  if (activeRenders.has(key)) {
+    res.status(200).json({ success: true, message: 'Render already in progress' });
+    return;
+  }
+
   try {
     res.status(200).json({ success: true, message: 'Rendering started in background' });
 
-    const jsxPromise = renderJsxBatch(base).catch((err) => {
-      console.log('No JSX files or JSX batch render failed:', err.message);
-    });
+    const renderPromise = (async () => {
+      try {
+        await renderJsxBatch(base).catch((err) => {
+          console.log('No JSX files or JSX batch render failed:', err.message);
+        });
 
-    const htmlPromise = renderHtmlBatch(base).catch((err) => {
-      console.log('No HTML files or HTML batch render failed:', err.message);
-    });
+        await renderHtmlBatch(base).catch((err) => {
+          console.log('No HTML files or HTML batch render failed:', err.message);
+        });
 
-    Promise.all([jsxPromise, htmlPromise]).then(() => {
-      console.log(`[batch-render] Completed for ${run}/${image}`);
-    }).catch(err => {
-      console.error('Background batch render error:', err);
-    });
+        console.log(`[batch-render] Completed for ${key}`);
+      } finally {
+        activeRenders.delete(key);
+      }
+    })();
+
+    activeRenders.set(key, renderPromise);
   } catch (err) {
     console.error('Batch render startup error:', err);
+    activeRenders.delete(key);
     res.status(500).json({ error: String(err.message || err) });
   }
 }
