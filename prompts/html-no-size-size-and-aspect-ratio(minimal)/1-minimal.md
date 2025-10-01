@@ -3,3 +3,4 @@ Rules:
 - Output ONLY HTML code. No explanations, no comments.
 - Begin exactly with: <html lang="en"> and end exactly with: </html>.
 - Place all widget content inside exactly one container: <div class="widget"> ... </div> in the <body>.
+- The widget must match the screenshot’s size and aspect ratio as closely as possible.
