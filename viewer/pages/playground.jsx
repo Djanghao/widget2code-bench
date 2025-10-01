@@ -351,7 +351,7 @@ function LiveCodeEditor({ code, type, onCodeChange, onTypeChange }) {
           ref={textareaRef}
           value={code}
           onChange={(e) => onCodeChange(e.target.value)}
-          placeholder={`Paste your ${type.toUpperCase()} code here...\n\nIt will auto-render as you type!`}
+          placeholder={`Paste your ${type.toUpperCase()} code here...`}
           style={{
             width: '100%',
             height: '100%',

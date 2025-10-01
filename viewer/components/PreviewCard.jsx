@@ -449,7 +449,21 @@ function CompareModal({
           )}
         </div>
         <div style={{ flex: '0 0 auto', paddingRight: extras.rightR, paddingBottom: extras.bottom, overflow: 'visible' }}>
-          <Text strong style={{ display: 'block', marginBottom: 8 }}>Render</Text>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <Text strong>Render</Text>
+            {renderUrl ? (
+              <Tooltip title="Download PNG">
+                <Button
+                  size="small"
+                  href={renderUrl}
+                  download={`${String(title || 'render').replace(/\s+/g, '_')}.png`}
+                  disabled={loading}
+                >
+                  Download
+                </Button>
+              </Tooltip>
+            ) : null}
+          </div>
           <div style={{ background: '#f5f5f5', borderRadius: 8, border: '1px solid #eef0f3', overflow: 'visible' }}>
             {loading ? (
               <Spin size="large" />
