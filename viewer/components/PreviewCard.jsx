@@ -20,6 +20,7 @@ export default function PreviewCard({
   codePlaceholder = 'No code available',
   cardStyle,
   cardHeight = 600,
+  showCodeTab = true,
 }) {
   const [compareOpen, setCompareOpen] = useState(false);
   const [loading, setLoading] = useState(Boolean(run && filePath));
@@ -115,10 +116,10 @@ export default function PreviewCard({
     : contentHeight - MEASUREMENT_OVERLAY_SPACE;
 
   const tabsWrapperStyle = variant === 'fill'
-    ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' }
+    ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }
     : { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' };
   const renderContentWrapperStyle = variant === 'fill'
-    ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' }
+    ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }
     : { height: contentHeight, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'visible' };
   const renderAreaStyle = variant === 'fill'
     ? {
@@ -129,7 +130,6 @@ export default function PreviewCard({
         justifyContent: 'center',
         background: '#f5f5f5',
         borderRadius: 8,
-        overflow: 'visible',
       }
     : {
         flex: 1,
@@ -200,11 +200,13 @@ export default function PreviewCard({
                 </div>
               ),
             },
-            {
+            ...(showCodeTab ? [{
               key: 'code',
               label: 'Code',
               children: (
-                <div style={variant === 'fill' ? undefined : { height: contentHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div style={variant === 'fill'
+                  ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }
+                  : { height: contentHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   <CodeViewer
                     label="Code"
                     content={resolvedCode}
@@ -215,9 +217,10 @@ export default function PreviewCard({
                   />
                 </div>
               ),
-            },
+            }] : []),
           ]}
           style={variant === 'fill' ? { flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 } : undefined}
+          className={variant === 'fill' ? 'tabs-fill' : undefined}
         />
       </div>
       {showCompare ? (
@@ -632,13 +635,13 @@ function CodeViewer({ label, content, placeholder, copyMessage, loading = false,
           </Button>
         </Tooltip>
       </div>
-      <div className="codeEditorBody" style={fullHeight ? { flex: 1, overflow: 'auto' } : undefined}>
+      <div className="codeEditorBody" style={fullHeight ? { flex: 1, overflow: 'auto', maxHeight: 'none' } : undefined}>
         {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: fullHeight ? '100%' : 180 }}>
             <Spin />
           </div>
         ) : (
-          <pre className={`codeEditorContent${hasContent ? "" : " codeEditorEmpty"}`} style={fullHeight ? { minHeight: '100%', flex: 1 } : undefined}>
+          <pre className={`codeEditorContent${hasContent ? "" : " codeEditorEmpty"}`} style={fullHeight ? { height: '100%' } : undefined}>
             {hasContent ? normalized : placeholder || ""}
           </pre>
         )}

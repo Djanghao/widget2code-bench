@@ -218,7 +218,7 @@ export default function Playground() {
               onChange={setMode}
               options={[
                 { label: 'Upload', value: 'upload', icon: <CloudUploadOutlined /> },
-                { label: 'Live Paste', value: 'live', icon: <ThunderboltOutlined /> }
+                { label: 'Paste', value: 'live', icon: <ThunderboltOutlined /> }
               ]}
               block
             />
@@ -286,6 +286,7 @@ export default function Playground() {
                   variant="fill"
                   renderPadding={32}
                   cardStyle={{ width: '100%', maxWidth: '100%' }}
+                  showCodeTab={false}
                 />
               </div>
             </>
