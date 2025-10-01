@@ -299,6 +299,7 @@ export default function Home() {
                           run={run}
                           filePath={it.path}
                           renderStatus={renderStatus}
+                          showCompare={true}
                         />
                       ))}
                     </div>
