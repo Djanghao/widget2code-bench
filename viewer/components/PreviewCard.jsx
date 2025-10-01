@@ -21,6 +21,7 @@ export default function PreviewCard({
   cardStyle,
   cardHeight = 600,
   showCodeTab = true,
+  renderStatus,
 }) {
   const [compareOpen, setCompareOpen] = useState(false);
   const [loading, setLoading] = useState(Boolean(run && filePath));
@@ -29,6 +30,7 @@ export default function PreviewCard({
   const [origDimensions, setOrigDimensions] = useState(null);
   const [resolvedCode, setResolvedCode] = useState(code || "");
   const [codeLoading, setCodeLoading] = useState(false);
+  const [pngCheckCount, setPngCheckCount] = useState(0);
 
   useEffect(() => {
     setPngUrl(initialPngUrl || null);
@@ -64,24 +66,27 @@ export default function PreviewCard({
   useEffect(() => {
     if (!run || !filePath) return;
 
-    setLoading(true);
-    fetch(`/api/render?run=${encodeURIComponent(run)}&file=${encodeURIComponent(filePath)}`)
-      .then((r) => r.json())
-      .then((data) => {
+    const checkPng = async () => {
+      try {
+        const data = await fetch(`/api/render?run=${encodeURIComponent(run)}&file=${encodeURIComponent(filePath)}`).then(r => r.json());
         if (data.pngPath) {
           const url = `/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(data.pngPath)}`;
           setPngUrl(`${url}&t=${Date.now()}`);
-        } else if (data.error) {
-          console.error('Render error:', data.error);
+          setLoading(false);
+        } else if (renderStatus === 'rendering' && pngCheckCount < 30) {
+          setTimeout(() => setPngCheckCount(c => c + 1), 2000);
+        } else {
+          setLoading(false);
         }
-      })
-      .catch((err) => {
-        console.error('Failed to render:', err);
-      })
-      .finally(() => {
+      } catch (err) {
+        console.error('PNG check failed:', err);
         setLoading(false);
-      });
-  }, [run, filePath]);
+      }
+    };
+
+    setLoading(true);
+    checkPng();
+  }, [run, filePath, pngCheckCount, renderStatus]);
 
   const handleImageLoad = (e) => {
     const img = e.target;

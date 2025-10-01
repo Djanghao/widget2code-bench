@@ -28,6 +28,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    res.status(200).json({ success: true, message: 'Rendering started in background' });
+
     const jsxPromise = renderJsxBatch(base).catch((err) => {
       console.log('No JSX files or JSX batch render failed:', err.message);
     });
@@ -36,11 +38,13 @@ export default async function handler(req, res) {
       console.log('No HTML files or HTML batch render failed:', err.message);
     });
 
-    await Promise.all([jsxPromise, htmlPromise]);
-
-    res.status(200).json({ success: true });
+    Promise.all([jsxPromise, htmlPromise]).then(() => {
+      console.log(`[batch-render] Completed for ${run}/${image}`);
+    }).catch(err => {
+      console.error('Background batch render error:', err);
+    });
   } catch (err) {
-    console.error('Batch render error:', err);
+    console.error('Batch render startup error:', err);
     res.status(500).json({ error: String(err.message || err) });
   }
 }

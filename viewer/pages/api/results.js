@@ -29,13 +29,16 @@ export default function handler(req, res) {
         .filter((f) => allowed.has(path.extname(f).toLowerCase()));
 
       categories[cat] = files
-        .map((f) => ({
-          name: path.basename(f, path.extname(f)),
-          ext: path.extname(f).toLowerCase(),
-          path: path.relative(path.join(RESULTS_ROOT, run), f).replaceAll("\\", "/"),
-          code: readText(f),
-          prompt: readPrompt(promptsRoot, cat, path.basename(f, path.extname(f))),
-        }))
+        .map((f) => {
+          const relPath = path.relative(path.join(RESULTS_ROOT, run), f).replaceAll("\\", "/");
+          return {
+            name: path.basename(f, path.extname(f)),
+            ext: path.extname(f).toLowerCase(),
+            path: relPath,
+            codeUrl: `/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(relPath)}`,
+            prompt: readPrompt(promptsRoot, cat, path.basename(f, path.extname(f))),
+          };
+        })
         .sort((a, b) => (a.name > b.name ? 1 : -1));
     }
   }
@@ -44,14 +47,6 @@ export default function handler(req, res) {
 
 function isSafe(s) {
   return s && typeof s === "string" && !s.includes("/") && !s.includes("..") && s.length < 256;
-}
-
-function readText(p) {
-  try {
-    return fs.readFileSync(p, "utf8");
-  } catch (_) {
-    return "";
-  }
 }
 
 function readRunMeta(p) {

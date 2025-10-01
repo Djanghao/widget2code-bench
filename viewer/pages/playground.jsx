@@ -186,14 +186,14 @@ export default function Playground() {
         />
         <Title level={4} style={{ color: '#fff', margin: 0, fontWeight: 700 }}>Widget2Code</Title>
         <div style={{ display: 'flex', gap: 8, marginLeft: 16 }}>
-          <Link href="/" passHref legacyBehavior>
+          <Link href="/" prefetch passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }}>
               <Button type="default" icon={<EyeOutlined />}>
                 Viewer
               </Button>
             </a>
           </Link>
-          <Link href="/playground" passHref legacyBehavior>
+          <Link href="/playground" prefetch passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }}>
               <Button type="primary" icon={<ExperimentOutlined />}>
                 Playground

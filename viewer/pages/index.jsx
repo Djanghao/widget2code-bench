@@ -48,46 +48,28 @@ export default function Home() {
       .then((d) => setResults(d.categories || {}))
       .finally(() => setLoadingResults(false));
 
-    // Check PNG completeness first; if incomplete, trigger batch render and wait
-    const doCheckAndMaybeRender = async () => {
+    const triggerBackgroundRender = async () => {
       try {
-        setRenderStatus('checking');
         const checkRes = await fetch(`/api/check-pngs?run=${encodeURIComponent(run)}&image=${encodeURIComponent(selected)}`);
         const check = await checkRes.json();
         if (check && check.complete) {
           console.log(`[viewer] PNG completeness: complete (total=${check.total})`);
           setRenderStatus('ready');
-          return;
         } else {
-          console.log(`[viewer] PNG completeness: incomplete (missing=${check?.missingCount ?? 'unknown'}). Starting batch render...`);
+          console.log(`[viewer] PNG completeness: incomplete (missing=${check?.missingCount ?? 'unknown'}). Starting background render...`);
+          setRenderStatus('rendering');
+          fetch('/api/batch-render', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ run, image: selected })
+          }).catch(err => console.error('Background render failed:', err));
         }
-
-        setRenderStatus('rendering');
-        await fetch('/api/batch-render', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ run, image: selected })
-        });
-
-        // After batch render completes, verify PNGs exist; poll a bit in case of FS lag
-        for (let i = 0; i < 20; i++) { // up to ~10s
-          const r = await fetch(`/api/check-pngs?run=${encodeURIComponent(run)}&image=${encodeURIComponent(selected)}`);
-          const d = await r.json();
-          if (d && d.complete) {
-            console.log('[viewer] Batch render complete. PNGs ready.');
-            setRenderStatus('ready');
-            return;
-          }
-          await new Promise((res) => setTimeout(res, 500));
-        }
-        console.log('[viewer] PNGs not fully ready after waiting; proceeding anyway.');
-        setRenderStatus('ready');
       } catch (err) {
-        console.error('Render readiness check failed:', err);
+        console.error('PNG check failed:', err);
         setRenderStatus('ready');
       }
     };
-    doCheckAndMaybeRender();
+    triggerBackgroundRender();
   }, [run, selected]);
 
   const filtered = useMemo(() => {
@@ -124,14 +106,14 @@ export default function Home() {
         />
         <Title level={4} style={{ color: "#fff", margin: 0, fontWeight: 700 }}>Widget2Code</Title>
         <div style={{ display: "flex", gap: 8, marginLeft: 16 }}>
-          <Link href="/" passHref legacyBehavior>
+          <Link href="/" prefetch passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }}>
               <Button type="primary" icon={<EyeOutlined />} style={{ background: "#1677ff", borderColor: "#1677ff" }}>
                 Viewer
               </Button>
             </a>
           </Link>
-          <Link href="/playground" passHref legacyBehavior>
+          <Link href="/playground" prefetch passHref legacyBehavior>
             <a style={{ textDecoration: 'none' }}>
               <Button icon={<ExperimentOutlined />} style={{ background: "#434343", borderColor: "#434343", color: "#fff" }}>
                 Playground
@@ -286,15 +268,6 @@ export default function Home() {
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 240 }}>
               <Spin />
             </div>
-          ) : renderStatus !== 'ready' ? (
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 240 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <Spin />
-                <Text type="secondary">
-                  {renderStatus === 'checking' ? 'Checking PNGs...' : 'Rendering PNGs...'}
-                </Text>
-              </div>
-            </div>
           ) : (
             <div>
               <Flex align="center" gap={12} wrap="wrap" style={{ marginBottom: 8 }}>
@@ -320,11 +293,12 @@ export default function Home() {
                         <PreviewCard
                           key={it.name}
                           title={it.name}
-                          code={it.code}
+                          codeUrl={it.codeUrl}
                           prompt={it.prompt}
                           sourceUrl={selectedSource}
                           run={run}
                           filePath={it.path}
+                          renderStatus={renderStatus}
                         />
                       ))}
                     </div>
