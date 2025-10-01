@@ -110,9 +110,10 @@ export default function Home() {
         gap: 12,
         padding: "0 24px",
         height: 64,
-        borderBottom: "1px solid #f0f0f0",
+        borderBottom: "1px solid #112a45",
         background: "#001529",
-        flexShrink: 0
+        flexShrink: 0,
+        lineHeight: "normal"
       }}>
         <Button
           type="text"

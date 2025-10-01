@@ -177,7 +177,7 @@ export default function Playground() {
 
   return (
     <Layout className="layout">
-      <Header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px' }}>
+      <Header style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '0 24px', height: 64, flexShrink: 0, lineHeight: 'normal' }}>
         <Button
           type="text"
           icon={siderCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -225,7 +225,7 @@ export default function Playground() {
             />
             <Title level={5} style={{ margin: '8px 0 0 0' }}>{isUploadMode ? 'Add Files' : 'Live Code Editor'}</Title>
           </div>
-          <div className="siderScroll" style={isUploadMode ? { gap: 12 } : { gap: 12, height: '100%' }}>
+          <div className="siderScroll" style={{ gap: 12 }}>
             {isUploadMode ? (
               <Dragger {...uploadProps} className="uploadDraggerFixed" style={{ borderRadius: 10 }}>
                 <p className="ant-upload-drag-icon"><InboxOutlined /></p>
@@ -233,27 +233,19 @@ export default function Playground() {
                 <p className="ant-upload-hint">HTML, JSX, and any assets; folder structure preserved</p>
               </Dragger>
             ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Radio.Group value={liveType} onChange={(e) => setLiveType(e.target.value)} size="small">
-                    <Radio.Button value="html">HTML</Radio.Button>
-                    <Radio.Button value="jsx">JSX</Radio.Button>
-                  </Radio.Group>
-                </div>
-                <Input.TextArea
-                  value={liveCode}
-                  onChange={(e) => setLiveCode(e.target.value)}
-                  placeholder={`Paste your ${liveType.toUpperCase()} code here...\n\nIt will auto-render as you type!`}
-                  style={{ flex: 1, resize: 'none', fontFamily: 'monospace', fontSize: 14 }}
-                />
-              </>
+              <LiveCodeEditor
+                code={liveCode}
+                type={liveType}
+                onCodeChange={setLiveCode}
+                onTypeChange={setLiveType}
+              />
             )}
           </div>
         </Sider>
         <Content style={{ padding: 0, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           {isUploadMode ? (
             <>
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 16, height: 60, flexShrink: 0 }}>
                 <Title level={5} style={{ margin: 0 }}>Previews</Title>
                 {rendering ? <Spin size="small" /> : null}
                 <Space style={{ marginLeft: 'auto' }}>
@@ -275,7 +267,7 @@ export default function Playground() {
             </>
           ) : (
             <>
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #eef0f3', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 8, height: 60, flexShrink: 0 }}>
                 <Title level={5} style={{ margin: 0 }}>Live Preview</Title>
                 {liveRendering && <Spin size="small" />}
               </div>
@@ -298,6 +290,87 @@ export default function Playground() {
         </Content>
       </Layout>
     </Layout>
+  );
+}
+
+function LiveCodeEditor({ code, type, onCodeChange, onTypeChange }) {
+  const textareaRef = useRef(null);
+
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 8, border: '1px solid #d0d7de', overflow: 'hidden' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '8px 12px',
+        borderBottom: '1px solid #d0d7de',
+        background: '#f6f8fa'
+      }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ff5f56' }} />
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#ffbd2e' }} />
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: '#27c93f' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => onTypeChange('html')}
+            style={{
+              padding: '4px 12px',
+              fontSize: 12,
+              fontWeight: 500,
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: type === 'html' ? '#1677ff' : 'transparent',
+              color: type === 'html' ? '#fff' : '#586069',
+              transition: 'all 0.2s'
+            }}
+          >
+            HTML
+          </button>
+          <button
+            onClick={() => onTypeChange('jsx')}
+            style={{
+              padding: '4px 12px',
+              fontSize: 12,
+              fontWeight: 500,
+              border: 'none',
+              borderRadius: 6,
+              cursor: 'pointer',
+              background: type === 'jsx' ? '#1677ff' : 'transparent',
+              color: type === 'jsx' ? '#fff' : '#586069',
+              transition: 'all 0.2s'
+            }}
+          >
+            JSX
+          </button>
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, background: '#fff' }}>
+        <textarea
+          ref={textareaRef}
+          value={code}
+          onChange={(e) => onCodeChange(e.target.value)}
+          placeholder={`Paste your ${type.toUpperCase()} code here...\n\nIt will auto-render as you type!`}
+          style={{
+            width: '100%',
+            height: '100%',
+            border: 'none',
+            outline: 'none',
+            resize: 'none',
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+            fontSize: 13,
+            lineHeight: 1.6,
+            padding: 16,
+            background: '#fff',
+            color: '#24292f',
+            margin: 0,
+            overflow: 'auto'
+          }}
+          spellCheck={false}
+        />
+      </div>
+    </div>
   );
 }
 
