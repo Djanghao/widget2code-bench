@@ -140,7 +140,17 @@ export default function Home() {
           </Link>
         </div>
         <div style={{ flex: 1 }} />
-        <RunPicker runs={runs} value={run} onChange={setRun} />
+        <RunPicker
+          runs={runs}
+          value={run}
+          onChange={(v) => {
+            // Prevent stale thumbnails from firing against the new run
+            setLoadingImages(true);
+            setImages([]);
+            setSelected(null);
+            setRun(v);
+          }}
+        />
       </header>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -222,6 +232,7 @@ export default function Home() {
                     }}>
                       {item.source ? (
                         <img
+                          loading="lazy"
                           src={`/api/thumbnail?run=${encodeURIComponent(run)}&file=${encodeURIComponent(item.source)}`}
                           alt={item.id}
                           style={{ width: "100%", height: "100%", objectFit: "cover" }}
