@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Typography, Input, Empty, Spin, Flex, Divider, Modal, Button } from "antd";
+import { Layout, Typography, Input, Empty, Spin, Flex, Divider, Modal, Button } from "antd";
 import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import RunPicker from "../components/RunPicker";
 import PreviewCard from "../components/PreviewCard";
 
+const { Sider } = Layout;
 const { Title, Text } = Typography;
 
 export default function Home() {
@@ -143,125 +144,127 @@ export default function Home() {
       </header>
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {!siderCollapsed && (
-          <aside style={{
-            width: 320,
+        <Sider
+          width={320}
+          collapsedWidth={0}
+          collapsible
+          collapsed={siderCollapsed}
+          trigger={null}
+          className="appSider"
+          style={{
             background: "#fff",
             borderRight: "1px solid #e8e8e8",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
             boxShadow: "2px 0 8px rgba(0,0,0,0.05)"
+          }}
+        >
+          <div style={{
+            padding: "16px 16px 12px",
+            flexShrink: 0
           }}>
-            <div style={{
-              padding: "16px 16px 12px",
-              flexShrink: 0
-            }}>
-              <Input
-                placeholder="Search images..."
-                allowClear
-                onChange={(e) => setFilter(e.target.value)}
-                value={filter}
-                size="large"
-                style={{ borderRadius: 8 }}
-              />
-            </div>
+            <Input
+              placeholder="Search images..."
+              allowClear
+              onChange={(e) => setFilter(e.target.value)}
+              value={filter}
+              size="large"
+              style={{ borderRadius: 8 }}
+            />
+          </div>
 
-            <div style={{
-              flex: 1,
-              overflow: "auto",
-              padding: "0 12px 12px"
-            }}>
-              {loadingImages ? (
-                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
-                  <Spin />
-                </div>
-              ) : filtered.length ? (
-                filtered.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => setSelected(item.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                      padding: 12,
-                      marginBottom: 8,
-                      cursor: "pointer",
-                      background: selected === item.id ? "#f0f7ff" : "#fafafa",
-                      border: selected === item.id ? "2px solid #1677ff" : "2px solid transparent",
-                      borderRadius: 12,
-                      transition: "all 0.2s",
-                      boxShadow: selected === item.id ? "0 2px 8px rgba(22,119,255,0.15)" : "none"
-                    }}
-                    onMouseEnter={(e) => {
-                      if (selected !== item.id) {
-                        e.currentTarget.style.background = "#f5f5f5";
-                        e.currentTarget.style.transform = "translateX(2px)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (selected !== item.id) {
-                        e.currentTarget.style.background = "#fafafa";
-                        e.currentTarget.style.transform = "translateX(0)";
-                      }
-                    }}
-                  >
+          <div style={{
+            flex: 1,
+            overflow: "auto",
+            padding: "0 12px 12px"
+          }}>
+            {loadingImages ? (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 200 }}>
+                <Spin />
+              </div>
+            ) : filtered.length ? (
+              filtered.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => setSelected(item.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: 12,
+                    marginBottom: 8,
+                    cursor: "pointer",
+                    background: selected === item.id ? "#f0f7ff" : "#fafafa",
+                    border: selected === item.id ? "2px solid #1677ff" : "2px solid transparent",
+                    borderRadius: 12,
+                    transition: "all 0.2s",
+                    boxShadow: selected === item.id ? "0 2px 8px rgba(22,119,255,0.15)" : "none"
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selected !== item.id) {
+                      e.currentTarget.style.background = "#f5f5f5";
+                      e.currentTarget.style.transform = "translateX(2px)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (selected !== item.id) {
+                      e.currentTarget.style.background = "#fafafa";
+                      e.currentTarget.style.transform = "translateX(0)";
+                    }
+                  }}
+                >
+                  <div style={{
+                    width: 56,
+                    height: 56,
+                    flexShrink: 0,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    background: "#fff",
+                    border: "1px solid #e8e8e8",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}>
+                    {item.source ? (
+                      <img
+                        loading="lazy"
+                        src={`/api/thumbnail?run=${encodeURIComponent(run)}&file=${encodeURIComponent(item.source)}`}
+                        alt={item.id}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <Text type="secondary" style={{ fontSize: 18, fontWeight: 500 }}>?</Text>
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
-                      width: 56,
-                      height: 56,
-                      flexShrink: 0,
-                      borderRadius: 8,
+                      fontWeight: 500,
+                      fontSize: 14,
+                      color: selected === item.id ? "#1677ff" : "#262626",
                       overflow: "hidden",
-                      background: "#fff",
-                      border: "1px solid #e8e8e8",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center"
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      marginBottom: 4
                     }}>
-                      {item.source ? (
-                        <img
-                          loading="lazy"
-                          src={`/api/thumbnail?run=${encodeURIComponent(run)}&file=${encodeURIComponent(item.source)}`}
-                          alt={item.id}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      ) : (
-                        <Text type="secondary" style={{ fontSize: 18, fontWeight: 500 }}>?</Text>
-                      )}
+                      {item.id}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontWeight: 500,
-                        fontSize: 14,
-                        color: selected === item.id ? "#1677ff" : "#262626",
+                    {item.source && (
+                      <Text type="secondary" style={{
+                        fontSize: 12,
+                        display: "block",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        marginBottom: 4
+                        whiteSpace: "nowrap"
                       }}>
-                        {item.id}
-                      </div>
-                      {item.source && (
-                        <Text type="secondary" style={{
-                          fontSize: 12,
-                          display: "block",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap"
-                        }}>
-                          {item.source.split("/").pop()}
-                        </Text>
-                      )}
-                    </div>
+                        {item.source.split("/").pop()}
+                      </Text>
+                    )}
                   </div>
-                ))
-              ) : (
-                <Empty description="No images" style={{ marginTop: 48 }} />
-              )}
-            </div>
-          </aside>
-        )}
+                </div>
+              ))
+            ) : (
+              <Empty description="No images" style={{ marginTop: 48 }} />
+            )}
+          </div>
+        </Sider>
 
         <main style={{
           flex: 1,
