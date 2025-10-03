@@ -131,6 +131,9 @@ def run_one(
     prompt_text: str,
     out_dir: Path,
     model: str,
+    provider: Optional[str],
+    api_key: Optional[str],
+    base_url: Optional[str],
     temperature: float,
     top_p: float,
     max_tokens: int,
@@ -160,7 +163,10 @@ def run_one(
     meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     llm = LLM(
+        provider=provider,
         model=model,
+        api_key=api_key,
+        base_url=base_url,
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
@@ -194,6 +200,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--experiment", required=True, help="Experiment name suffix")
     p.add_argument("--threads", type=int, default=os.cpu_count() or 4, help="Max concurrent workers")
     p.add_argument("--model", default="doubao-seed-1-6-250615", help="Model id for provider-hub")
+    p.add_argument("--provider", default=None, help="Provider override (e.g. 'openai_compatible', 'qwen', 'doubao', 'deepseek', 'openai')")
+    p.add_argument("--api-key", dest="api_key", default=None, help="API key for provider (required for 'openai_compatible')")
+    p.add_argument("--base-url", dest="base_url", default=None, help="Base URL for provider (required for 'openai_compatible')")
     p.add_argument("--temperature", type=float, default=0.2)
     p.add_argument("--top-p", type=float, default=0.9)
     p.add_argument("--max-tokens", type=int, default=1500)
@@ -231,6 +240,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     meta = {
         "experiment": args.experiment,
+        "provider": args.provider,
+        "base_url": args.base_url,
         "model": args.model,
         "temperature": args.temperature,
         "top_p": args.top_p,
@@ -269,6 +280,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         prompt_text,
                         out_dir,
                         args.model,
+                        args.provider,
+                        args.api_key,
+                        args.base_url,
                         args.temperature,
                         args.top_p,
                         args.max_tokens,
