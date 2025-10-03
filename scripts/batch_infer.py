@@ -110,6 +110,20 @@ def prettify_html(code: str) -> str:
         pretty += "\n"
     return pretty
 
+
+def append_log(run_dir: Path, line: str) -> None:
+    log_file = run_dir / "run.log"
+    try:
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(line.rstrip("\n") + "\n")
+    except Exception:
+        pass
+
+
+def log_line(run_dir: Path, tag: str, message: str) -> None:
+    ts = dt.datetime.now(ZoneInfo("America/Toronto")).strftime("%Y-%m-%d %H:%M:%S")
+    append_log(run_dir, f"[{ts}] {tag:<12} | {message}")
+
 def build_size_constraint_text(image_path: Path, size_flag: bool, aspect_ratio_flag: bool) -> tuple[str, dict]:
     if not size_flag and not aspect_ratio_flag:
         return "", {}
@@ -156,6 +170,7 @@ def run_one(
         "prompt_file": str(prompt_file),
         "size_flag": size_flag,
         "aspect_ratio_flag": aspect_ratio_flag,
+        "file_type": "html" if category.startswith("html") else "jsx",
     }
     if size_info:
         meta_data["image_size"] = {"width": size_info["width"], "height": size_info["height"]}
@@ -258,6 +273,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     }
     (run_dir / "run.meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # Log batch start
+    log_line(run_dir, "BATCH START", f"provider={args.provider} model={args.model} base_url={args.base_url}")
+    log_line(run_dir, "BATCH INFO", f"images_dir={images_dir} include={args.include} exclude={args.exclude} size={args.size} aspect_ratio={args.aspect_ratio} threads={args.threads}")
+
     tasks = []
     with futures.ThreadPoolExecutor(max_workers=args.threads) as pool:
         for img in images:
@@ -300,10 +319,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             if err:
                 fail += 1
                 print(f"[{i}/{len(tasks)}] FAIL {out_path}: {err}")
+                log_line(run_dir, "BATCH FAIL", f"path={out_path} error={err}")
             else:
                 ok += 1
                 print(f"[{i}/{len(tasks)}] OK   {out_path}")
+                log_line(run_dir, "BATCH OK", f"path={out_path}")
 
+    log_line(run_dir, "BATCH DONE", f"ok={ok} fail={fail} output={run_dir}")
     print(f"Done. Succeeded: {ok}, Failed: {fail}. Output: {run_dir}")
     return 0
 
