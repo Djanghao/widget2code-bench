@@ -126,14 +126,15 @@ async function main() {
   dir = path.resolve(process.cwd(), dir);
   const files = [];
   for await (const f of walk(dir)) files.push(f);
-  if (files.length === 0) {
+  const total = files.length;
+  if (total === 0) {
     log('No .jsx files found under:', dir);
     return;
   }
   const cpu = os.cpus()?.length || 4;
-  const concurrency = Math.max(1, Math.min(files.length, jobs || cpu));
+  const concurrency = Math.max(1, Math.min(total, jobs || cpu));
   log('Folder:', dir);
-  log('Files:', files.length);
+  log('Files:', total);
   log('Concurrency:', concurrency);
 
   const browser = await chromium.launch({ headless: true });
@@ -149,6 +150,9 @@ async function main() {
   } catch {}
 
   let idx = 0;
+  let processed = 0;
+  let okCount = 0;
+  let failCount = 0;
   const results = [];
   async function worker() {
     while (true) {
@@ -194,9 +198,20 @@ async function main() {
         const outPath = path.join(d, `${name}.png`);
         await widget.screenshot({ path: outPath, omitBackground: true });
         await page.close();
-        results.push({ file, ok: true, ms: Date.now() - t0, size: `${Math.round(box.width)}x${Math.round(box.height)}` });
+        const ms = Date.now() - t0;
+        const size = `${Math.round(box.width)}x${Math.round(box.height)}`;
+        results.push({ file, ok: true, ms, size, outPath });
+        okCount++;
+        processed++;
+        const percent = ((processed / total) * 100).toFixed(1);
+        log(`[${processed}/${total}] ${percent}% OK`, file, '->', outPath, size, `${ms}ms`);
       } catch (err) {
-        results.push({ file, ok: false, error: String(err) });
+        const error = String(err?.message || err);
+        results.push({ file, ok: false, error });
+        failCount++;
+        processed++;
+        const percent = ((processed / total) * 100).toFixed(1);
+        log(`[${processed}/${total}] ${percent}% FAIL`, file, error);
       }
     }
   }
@@ -207,11 +222,13 @@ async function main() {
 
   for (const r of results) {
     if (r.ok) {
-      log('OK', r.file, r.size, `${r.ms}ms`);
+      log('OK', r.file, '->', r.outPath, r.size, `${r.ms}ms`);
     } else {
       log('FAIL', r.file, r.error);
     }
   }
+  const finalPercent = ((processed / total) * 100).toFixed(1);
+  log(`Summary: ${processed}/${total} ${finalPercent}% completed, OK=${okCount} FAIL=${failCount}`);
 }
 
 main().catch((e) => { console.error('[render-jsx-batch] Error:', e); process.exit(1); });
