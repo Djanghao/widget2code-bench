@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layout, Typography, Input, Empty, Spin, Flex, Divider, Modal, Button, message } from "antd";
-import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import RunPicker from "../components/RunPicker";
@@ -119,6 +119,16 @@ export default function Home() {
     }
   };
 
+  const handleDownloadAll = () => {
+    if (!run) {
+      message.warning('No run selected');
+      return;
+    }
+    const url = `/api/download-all?run=${encodeURIComponent(run)}`;
+    window.location.href = url;
+    message.success('Preparing download...');
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
       <header style={{
@@ -162,9 +172,17 @@ export default function Home() {
           onClick={handleRenderAll}
           loading={renderingAll}
           disabled={!run}
-          style={{ marginRight: 12 }}
+          style={{ marginRight: 8 }}
         >
           Render All
+        </Button>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={handleDownloadAll}
+          disabled={!run}
+          style={{ marginRight: 12 }}
+        >
+          Download All
         </Button>
         <RunPicker
           runs={runs}
