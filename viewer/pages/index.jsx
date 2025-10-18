@@ -105,6 +105,17 @@ export default function Home() {
     }
     setRenderingAll(true);
     try {
+      const checkResponse = await fetch(`/api/check-run-pngs?run=${encodeURIComponent(run)}`);
+      const checkData = await checkResponse.json();
+
+      if (checkData.complete) {
+        message.success(`All PNGs already rendered (${checkData.total} files)`);
+        setRenderingAll(false);
+        return;
+      }
+
+      message.info(`Rendering ${checkData.missingCount} missing PNGs...`);
+
       const response = await fetch('/api/batch-render-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -124,14 +135,28 @@ export default function Home() {
     }
   };
 
-  const handleDownloadAll = () => {
+  const handleDownloadAll = async () => {
     if (!run) {
       message.warning('No run selected');
       return;
     }
-    const url = `/api/download-all?run=${encodeURIComponent(run)}`;
-    window.location.href = url;
-    message.success('Preparing download...');
+
+    try {
+      const checkResponse = await fetch(`/api/check-run-pngs?run=${encodeURIComponent(run)}`);
+      const checkData = await checkResponse.json();
+
+      if (!checkData.complete) {
+        message.warning(`Cannot download: ${checkData.missingCount} PNGs not rendered yet. Please run "Render All" first.`);
+        return;
+      }
+
+      const url = `/api/download-all?run=${encodeURIComponent(run)}`;
+      window.location.href = url;
+      message.success('Preparing download...');
+    } catch (err) {
+      console.error('Download all check failed:', err);
+      message.error('Failed to check PNG status');
+    }
   };
 
   const handleCheckRun = async () => {
