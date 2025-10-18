@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Layout, Typography, Input, Empty, Spin, Flex, Divider, Modal, Button } from "antd";
-import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined } from "@ant-design/icons";
+import { Layout, Typography, Input, Empty, Spin, Flex, Divider, Modal, Button, message } from "antd";
+import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import RunPicker from "../components/RunPicker";
@@ -22,6 +22,7 @@ export default function Home() {
   const [sourceModalOpen, setSourceModalOpen] = useState(false);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [renderStatus, setRenderStatus] = useState('idle');
+  const [renderingAll, setRenderingAll] = useState(false);
 
   useEffect(() => {
     fetch("/api/runs").then((r) => r.json()).then((d) => {
@@ -92,6 +93,32 @@ export default function Home() {
     return `/api/file?run=${encodeURIComponent(run)}&file=${encodeURIComponent(selectedItem.source)}`;
   }, [run, selectedItem]);
 
+  const handleRenderAll = async () => {
+    if (!run) {
+      message.warning('No run selected');
+      return;
+    }
+    setRenderingAll(true);
+    try {
+      const response = await fetch('/api/batch-render-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ run })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        message.success(data.message || 'Batch rendering started');
+      } else {
+        message.error(data.error || 'Failed to start batch rendering');
+      }
+    } catch (err) {
+      console.error('Batch render all failed:', err);
+      message.error('Failed to start batch rendering');
+    } finally {
+      setRenderingAll(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
       <header style={{
@@ -130,6 +157,15 @@ export default function Home() {
           </Link>
         </div>
         <div style={{ flex: 1 }} />
+        <Button
+          icon={<ThunderboltOutlined />}
+          onClick={handleRenderAll}
+          loading={renderingAll}
+          disabled={!run}
+          style={{ marginRight: 12 }}
+        >
+          Render All
+        </Button>
         <RunPicker
           runs={runs}
           value={run}
