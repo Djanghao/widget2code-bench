@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Layout, Typography, Input, Empty, Spin, Flex, Divider, Modal, Button, message } from "antd";
-import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, DownloadOutlined } from "@ant-design/icons";
+import { MenuFoldOutlined, MenuUnfoldOutlined, EyeOutlined, ExperimentOutlined, ThunderboltOutlined, DownloadOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import RunPicker from "../components/RunPicker";
 import PreviewCard from "../components/PreviewCard";
+import CheckRunModal from "../components/CheckRunModal";
 
 const { Sider } = Layout;
 const { Title, Text } = Typography;
@@ -23,6 +24,10 @@ export default function Home() {
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [renderStatus, setRenderStatus] = useState('idle');
   const [renderingAll, setRenderingAll] = useState(false);
+  const [checkModalOpen, setCheckModalOpen] = useState(false);
+  const [checkData, setCheckData] = useState(null);
+  const [checkLoading, setCheckLoading] = useState(false);
+  const [checkError, setCheckError] = useState(null);
 
   useEffect(() => {
     fetch("/api/runs").then((r) => r.json()).then((d) => {
@@ -129,6 +134,31 @@ export default function Home() {
     message.success('Preparing download...');
   };
 
+  const handleCheckRun = async () => {
+    if (!run) {
+      message.warning('No run selected');
+      return;
+    }
+    setCheckModalOpen(true);
+    setCheckLoading(true);
+    setCheckError(null);
+    setCheckData(null);
+    try {
+      const response = await fetch(`/api/check-run?run=${encodeURIComponent(run)}`);
+      const data = await response.json();
+      if (response.ok) {
+        setCheckData(data);
+      } else {
+        setCheckError(data.error || 'Failed to check run');
+      }
+    } catch (err) {
+      console.error('Check run failed:', err);
+      setCheckError('Failed to check run');
+    } finally {
+      setCheckLoading(false);
+    }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
       <header style={{
@@ -180,9 +210,17 @@ export default function Home() {
           icon={<DownloadOutlined />}
           onClick={handleDownloadAll}
           disabled={!run}
-          style={{ marginRight: 12 }}
+          style={{ marginRight: 8 }}
         >
           Download All
+        </Button>
+        <Button
+          icon={<CheckCircleOutlined />}
+          onClick={handleCheckRun}
+          disabled={!run}
+          style={{ marginRight: 12 }}
+        >
+          Check Run
         </Button>
         <RunPicker
           runs={runs}
@@ -390,6 +428,15 @@ export default function Home() {
           />
         ) : null}
       </Modal>
+
+      <CheckRunModal
+        open={checkModalOpen}
+        onClose={() => setCheckModalOpen(false)}
+        run={run}
+        data={checkData}
+        loading={checkLoading}
+        error={checkError}
+      />
     </div>
   );
 }

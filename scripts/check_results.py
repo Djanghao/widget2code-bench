@@ -64,6 +64,7 @@ def main(argv: List[str] = None) -> int:
     p = argparse.ArgumentParser(description="Check batch_infer results (works with old and new meta.json formats)")
     p.add_argument("results_dir", help="Results directory to analyze")
     p.add_argument("--verbose", "-v", action="store_true", help="Show detailed information")
+    p.add_argument("--json", action="store_true", help="Output results as JSON")
     args = p.parse_args(argv)
 
     results_dir = Path(args.results_dir)
@@ -95,6 +96,20 @@ def main(argv: List[str] = None) -> int:
     response_none_count = len(stats["response_none"])
     content_empty_count = len(stats["content_empty"])
     invalid_meta_count = len(stats["invalid_meta"])
+
+    if args.json:
+        output = {
+            "total": total,
+            "success": success_count,
+            "request_failed": request_failed_count,
+            "response_none": response_none_count,
+            "content_empty": content_empty_count,
+            "missing_output": missing_output_count,
+            "invalid_meta": invalid_meta_count,
+            "stats": {k: v for k, v in stats.items()}
+        }
+        print(json.dumps(output, indent=2))
+        return 0
 
     print(f"\n{'='*60}")
     print(f"Results Analysis for: {results_dir}")
