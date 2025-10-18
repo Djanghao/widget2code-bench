@@ -124,27 +124,45 @@ def run_one_snapshot(
     )
     img = prepare_image_content(str(image_path))
     messages = [ChatMessage(role="user", content=[{"type": "text", "text": prompt_text}, img])]
+
+    out_cat = out_dir / category
+    out_cat.mkdir(parents=True, exist_ok=True)
+    meta_out_file = out_cat / f"{base_name}.meta.json"
+
     try:
-        resp = llm.chat(messages, stream=False)
-        raw = resp.content if hasattr(resp, "content") else str(resp)
+        resp = llm.chat(messages)
     except Exception as e:
-        # Return a sensible path where it would have written
-        out_cat = out_dir / category
-        out_cat.mkdir(parents=True, exist_ok=True)
+        # Update meta.json with error
+        try:
+            meta_data = json.loads(meta_out_file.read_text(encoding="utf-8"))
+            meta_data["response"] = None
+            meta_data["error"] = str(e)
+            meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
         return (out_cat / f"{base_name}{expected_extension_from_type(file_type)}", None, f"ERROR: {e}")
 
-    code = batch_infer.extract_code(raw)
+    # Update meta.json with response and clear error field
+    from dataclasses import asdict
+    try:
+        meta_data = json.loads(meta_out_file.read_text(encoding="utf-8"))
+        meta_data["response"] = asdict(resp) if hasattr(resp, "__dataclass_fields__") else {"content": str(resp)}
+        # Clear error field if present (from previous failed run)
+        if "error" in meta_data:
+            del meta_data["error"]
+        meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    raw = resp.content if hasattr(resp, "content") else str(resp)
+
+    code = batch_infer.extract_code(raw) if raw else ""
     expected_ext = expected_extension_from_type(file_type)
     # Strictly use meta-declared file_type for extension
     file_ext = expected_ext
-    out_cat = out_dir / category
-    out_cat.mkdir(parents=True, exist_ok=True)
     out_file = out_cat / f"{base_name}{file_ext}"
-    formatted_code = code
-    if file_ext == ".html":
-        formatted_code = batch_infer.prettify_html(formatted_code)
-    out_file.write_text(formatted_code, encoding="utf-8")
-    return (out_file, formatted_code[:64], None)
+    out_file.write_text(code, encoding="utf-8")
+    return (out_file, code[:64] if code else "", None)
 
 
 def append_log(run_dir: Path, line: str) -> None:

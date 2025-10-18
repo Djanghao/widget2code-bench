@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from bs4 import BeautifulSoup
 from PIL import Image
 
 try:
@@ -99,18 +98,6 @@ def decide_extension(code: str) -> str:
     return ".txt"
 
 
-def prettify_html(code: str) -> str:
-    """Format HTML using BeautifulSoup while failing gracefully."""
-    try:
-        soup = BeautifulSoup(code, "html.parser")
-        pretty = soup.prettify()
-    except Exception:
-        return code
-    if not pretty.endswith("\n"):
-        pretty += "\n"
-    return pretty
-
-
 def append_log(run_dir: Path, line: str) -> None:
     log_file = run_dir / "run.log"
     try:
@@ -191,20 +178,25 @@ def run_one(
     img = prepare_image_content(str(image_path))
     messages = [ChatMessage(role="user", content=[{"type": "text", "text": prompt_text}, img])]
     try:
-        resp = llm.chat(messages, stream=False)
-        raw = resp.content if hasattr(resp, "content") else str(resp)
+        resp = llm.chat(messages)
     except Exception as e:
+        meta_data["response"] = None
+        meta_data["error"] = str(e)
+        meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
         return (prompt_file, None, f"ERROR: {e}")
-    code = extract_code(raw)
+
+    from dataclasses import asdict
+    meta_data["response"] = asdict(resp) if hasattr(resp, "__dataclass_fields__") else {"content": str(resp)}
+    meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    raw = resp.content if hasattr(resp, "content") else str(resp)
+    code = extract_code(raw) if raw else ""
     ext = decide_extension(code)
     expected_ext = ".html" if category.startswith("html") else ".jsx"
     file_ext = ext if ext in (".html", ".jsx") else expected_ext
     out_file = out_cat / f"{base_name}{file_ext}"
-    formatted_code = code
-    if file_ext == ".html":
-        formatted_code = prettify_html(formatted_code)
-    out_file.write_text(formatted_code, encoding="utf-8")
-    return (out_file, formatted_code[:64], None)
+    out_file.write_text(code, encoding="utf-8")
+    return (out_file, code[:64] if code else "", None)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
