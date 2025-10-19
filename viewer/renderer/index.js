@@ -54,12 +54,12 @@ function runRenderer(scriptName, args) {
 }
 
 export async function renderJsx(filePath) {
-  await runRenderer('render-jsx.js', [filePath]);
+  await runRenderer('render-jsx.mjs', [filePath]);
   return getPngPath(filePath);
 }
 
 export async function renderHtml(filePath) {
-  await runRenderer('render-html.js', [filePath]);
+  await runRenderer('render-html.mjs', [filePath]);
   return getPngPath(filePath);
 }
 
@@ -68,7 +68,7 @@ export async function renderJsxBatch(folderPath, concurrency) {
   if (concurrency) {
     args.push('-j', String(concurrency));
   }
-  await runRenderer('render-jsx-batch.js', args);
+  await runRenderer('render-jsx-batch.mjs', args);
 }
 
 export async function renderHtmlBatch(folderPath, concurrency) {
@@ -76,11 +76,11 @@ export async function renderHtmlBatch(folderPath, concurrency) {
   if (concurrency) {
     args.push('-j', String(concurrency));
   }
-  await runRenderer('render-html-batch.js', args);
+  await runRenderer('render-html-batch.mjs', args);
 }
 
 export async function cleanPngs(folderPath) {
-  await runRenderer('clean.js', [folderPath]);
+  await runRenderer('clean.mjs', [folderPath]);
 }
 
 export function getPngPath(sourcePath) {

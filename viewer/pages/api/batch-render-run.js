@@ -2,12 +2,11 @@ import path from 'path';
 import fs from 'fs';
 import { RESULTS_ROOT } from '../../lib/serverPaths';
 import { renderJsxBatch, renderHtmlBatch } from '../../renderer/index.js';
+import { isRenderActive, setRenderActive, deleteRenderActive } from '../../lib/renderManager';
 
 function safe(s) {
   return s && typeof s === 'string' && !s.includes('..') && !s.includes('\\') && s.length < 512;
 }
-
-const activeRenders = new Map();
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,13 +30,15 @@ export default async function handler(req, res) {
 
   const key = run;
 
-  if (activeRenders.has(key)) {
+  if (isRenderActive(key)) {
     res.status(200).json({ success: true, message: 'Render already in progress' });
     return;
   }
 
   try {
     res.status(200).json({ success: true, message: 'Rendering started in background' });
+
+    const controller = new AbortController();
 
     const renderPromise = (async () => {
       try {
@@ -48,10 +49,17 @@ export default async function handler(req, res) {
         console.log(`[batch-render-run] Starting render for ${imageDirs.length} images in run "${run}"`);
 
         for (const imageDir of imageDirs) {
+          if (controller.signal.aborted) {
+            console.log(`[batch-render-run] Render aborted for run "${run}"`);
+            break;
+          }
+
           try {
             await renderJsxBatch(imageDir).catch((err) => {
               console.log(`[batch-render-run] No JSX files or JSX batch render failed for ${imageDir}:`, err.message);
             });
+
+            if (controller.signal.aborted) break;
 
             await renderHtmlBatch(imageDir).catch((err) => {
               console.log(`[batch-render-run] No HTML files or HTML batch render failed for ${imageDir}:`, err.message);
@@ -63,14 +71,14 @@ export default async function handler(req, res) {
 
         console.log(`[batch-render-run] Completed for run "${run}"`);
       } finally {
-        activeRenders.delete(key);
+        deleteRenderActive(key);
       }
     })();
 
-    activeRenders.set(key, renderPromise);
+    setRenderActive(key, renderPromise, controller);
   } catch (err) {
     console.error('Batch render run startup error:', err);
-    activeRenders.delete(key);
+    deleteRenderActive(key);
     res.status(500).json({ error: String(err.message || err) });
   }
 }
