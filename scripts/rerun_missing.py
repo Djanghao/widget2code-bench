@@ -45,10 +45,23 @@ def code_exists(category_dir: Path, base_name: str) -> bool:
     return False
 
 
-def collect_missing(run_dir: Path) -> Tuple[dict, List[Tuple[Path, str, str, Path]]]:
+def has_error_in_meta(meta_file: Path) -> bool:
+    """Check if meta.json contains an error field."""
+    try:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        return "error" in meta and meta["error"] is not None
+    except Exception:
+        return False
+
+
+def collect_missing(run_dir: Path) -> Tuple[dict, List[Tuple[Path, str, str, Optional[Path]]]]:
     """Return (run_meta, tasks) where tasks are tuples:
-    (image_dir, category, base_name, meta_file_path)
-    Only includes items where output html/jsx is missing and a meta.json exists.
+    (image_dir, category, base_name, meta_file_path_or_None)
+
+    Includes tasks that need to be (re)run:
+    1. Missing output files (has meta.json but no .html/.jsx)
+    2. Failed tasks (has error in meta.json, even if output file exists)
+    3. Never started tasks (no meta.json at all - need to infer from run.meta.json)
     """
     run_meta_file = run_dir / "run.meta.json"
     if not run_meta_file.exists():
@@ -62,22 +75,49 @@ def collect_missing(run_dir: Path) -> Tuple[dict, List[Tuple[Path, str, str, Pat
         # Fallback: single stem
         return meta_path.stem
 
-    tasks: List[Tuple[Path, str, str, Path]] = []
+    # Get expected prompts from run.meta.json
+    prompts_root = Path(run_meta.get("prompts_root", "prompts"))
+    include_patterns = run_meta.get("include")
+    exclude_patterns = run_meta.get("exclude")
+
+    # Collect expected prompt files
+    expected_prompts = []
+    if prompts_root.exists():
+        expected_prompts = batch_infer.collect_prompts(prompts_root, include_patterns, exclude_patterns)
+
+    tasks: List[Tuple[Path, str, str, Optional[Path]]] = []
     for image_dir in sorted([p for p in run_dir.iterdir() if p.is_dir()]):
         if image_dir.name == "run.meta.json":
             continue
-        for category_dir in sorted([p for p in image_dir.iterdir() if p.is_dir()]):
-            category = category_dir.name
-            for meta_file in sorted(category_dir.glob("*.meta.json")):
-                base_name = base_from_meta(meta_file)
-                if code_exists(category_dir, base_name):
-                    continue
+
+        # Check all expected categories/prompts for this image
+        for category, prompt_file, _ in expected_prompts:
+            category_dir = image_dir / category
+            base_name = prompt_file.stem
+            meta_file = category_dir / f"{base_name}.meta.json" if category_dir.exists() else None
+
+            # Case 1: meta.json doesn't exist at all (never started)
+            if meta_file is None or not meta_file.exists():
+                tasks.append((image_dir, category, base_name, None))
+                continue
+
+            # Case 2: has error in meta.json (failed)
+            if has_error_in_meta(meta_file):
                 tasks.append((image_dir, category, base_name, meta_file))
+                continue
+
+            # Case 3: missing output file (interrupted before writing output)
+            if not code_exists(category_dir, base_name):
+                tasks.append((image_dir, category, base_name, meta_file))
+                continue
 
     return run_meta, tasks
 
 
-def resolve_prompt_text_from_meta(meta_file: Path) -> Optional[str]:
+def resolve_prompt_text_from_meta(meta_file: Optional[Path]) -> Optional[str]:
+    """Get prompt text from meta.json if it exists, otherwise return None."""
+    if meta_file is None or not meta_file.exists():
+        return None
     try:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
         return meta.get("prompt")
@@ -111,6 +151,23 @@ def run_one_snapshot(
     max_tokens: int,
     timeout: int,
 ) -> Tuple[Path, Optional[str], Optional[str]]:
+    out_cat = out_dir / category
+    out_cat.mkdir(parents=True, exist_ok=True)
+    meta_out_file = out_cat / f"{base_name}.meta.json"
+
+    # Load or create meta_data
+    if meta_out_file.exists():
+        try:
+            meta_data = json.loads(meta_out_file.read_text(encoding="utf-8"))
+        except Exception:
+            meta_data = {}
+    else:
+        meta_data = {
+            "prompt": prompt_text,
+            "category": category,
+            "file_type": file_type,
+        }
+
     # Build LLM
     llm = LLM(
         provider=provider,
@@ -125,34 +182,22 @@ def run_one_snapshot(
     img = prepare_image_content(str(image_path))
     messages = [ChatMessage(role="user", content=[{"type": "text", "text": prompt_text}, img])]
 
-    out_cat = out_dir / category
-    out_cat.mkdir(parents=True, exist_ok=True)
-    meta_out_file = out_cat / f"{base_name}.meta.json"
-
     try:
         resp = llm.chat(messages)
     except Exception as e:
         # Update meta.json with error
-        try:
-            meta_data = json.loads(meta_out_file.read_text(encoding="utf-8"))
-            meta_data["response"] = None
-            meta_data["error"] = str(e)
-            meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        meta_data["response"] = None
+        meta_data["error"] = str(e)
+        meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
         return (out_cat / f"{base_name}{expected_extension_from_type(file_type)}", None, f"ERROR: {e}")
 
     # Update meta.json with response and clear error field
     from dataclasses import asdict
-    try:
-        meta_data = json.loads(meta_out_file.read_text(encoding="utf-8"))
-        meta_data["response"] = asdict(resp) if hasattr(resp, "__dataclass_fields__") else {"content": str(resp)}
-        # Clear error field if present (from previous failed run)
-        if "error" in meta_data:
-            del meta_data["error"]
-        meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    meta_data["response"] = asdict(resp) if hasattr(resp, "__dataclass_fields__") else {"content": str(resp)}
+    # Clear error field if present (from previous failed run)
+    if "error" in meta_data:
+        del meta_data["error"]
+    meta_out_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     raw = resp.content if hasattr(resp, "content") else str(resp)
 
@@ -214,13 +259,20 @@ def rerun_missing(run_dir: Path, threads: int = 8, limit: Optional[int] = None, 
     if dry_run:
         for image_dir, category, base_name, meta_file in tasks:
             # read file_type for display if present
-            try:
-                md = json.loads(meta_file.read_text(encoding="utf-8"))
-                ft = md.get("file_type")
-            except Exception:
-                ft = None
-            out_dir = image_dir
-            suffix = f" ({ft})" if ft else ""
+            status = "never-started"
+            if meta_file and meta_file.exists():
+                try:
+                    md = json.loads(meta_file.read_text(encoding="utf-8"))
+                    ft = md.get("file_type")
+                    if has_error_in_meta(meta_file):
+                        status = "failed"
+                    else:
+                        status = "incomplete"
+                except Exception:
+                    ft = None
+            else:
+                ft = "html" if category.startswith("html") else "jsx"
+            suffix = f" ({ft}, {status})" if ft else f" ({status})"
             print(f"DRY-RUN: would run {image_dir.name}/{category}/{base_name}{suffix}")
         return 0
 
@@ -228,12 +280,21 @@ def rerun_missing(run_dir: Path, threads: int = 8, limit: Optional[int] = None, 
     log_line(run_dir, "RERUN START", f"provider={provider} model={model} base_url={base_url}")
     log_line(run_dir, "RERUN PLAN", f"missing_before={total_missing_before} scheduled={len(tasks)} threads={threads}")
     for image_dir, category, base_name, meta_file in tasks:
-        try:
-            md = json.loads(meta_file.read_text(encoding="utf-8"))
-            ft = md.get("file_type")
-        except Exception:
-            ft = None
-        log_line(run_dir, "RERUN TASK", f"image={image_dir.name} category={category} name={base_name}{(f' file_type={ft}' if ft else '')}")
+        status = "never-started"
+        ft = None
+        if meta_file and meta_file.exists():
+            try:
+                md = json.loads(meta_file.read_text(encoding="utf-8"))
+                ft = md.get("file_type")
+                if has_error_in_meta(meta_file):
+                    status = "failed"
+                else:
+                    status = "incomplete"
+            except Exception:
+                pass
+        else:
+            ft = "html" if category.startswith("html") else "jsx"
+        log_line(run_dir, "RERUN TASK", f"image={image_dir.name} category={category} name={base_name} file_type={ft} status={status}")
 
     # If nothing to do, record summary and return early
     if len(tasks) == 0:
@@ -249,6 +310,19 @@ def rerun_missing(run_dir: Path, threads: int = 8, limit: Optional[int] = None, 
             return 2
         api_key = api_key_opt
 
+    # Get prompts_root and patterns to reload prompts for never-started tasks
+    prompts_root = Path(run_meta.get("prompts_root", "prompts"))
+    include_patterns = run_meta.get("include")
+    exclude_patterns = run_meta.get("exclude")
+
+    # Load all expected prompts
+    expected_prompts_dict = {}
+    if prompts_root.exists():
+        expected_prompts = batch_infer.collect_prompts(prompts_root, include_patterns, exclude_patterns)
+        for category, prompt_file, prompt_text in expected_prompts:
+            key = (category, prompt_file.stem)
+            expected_prompts_dict[key] = (prompt_file, prompt_text)
+
     ok = 0
     fail = 0
     with futures.ThreadPoolExecutor(max_workers=max(1, threads)) as pool:
@@ -259,20 +333,33 @@ def rerun_missing(run_dir: Path, threads: int = 8, limit: Optional[int] = None, 
                 print(f"WARN: No source image found in {image_dir}")
                 log_line(run_dir, "RERUN SKIP", f"image={image_dir.name} category={category} name={base_name} reason=no_source_image")
                 continue
+
+            # Try to get prompt from meta.json first
             prompt_text = resolve_prompt_text_from_meta(meta_file)
+
+            # If no meta.json or no prompt in meta, load from original prompt file
             if not prompt_text:
-                print(f"WARN: Could not read prompt from meta: {meta_file}")
-                log_line(run_dir, "RERUN SKIP", f"image={image_dir.name} category={category} name={base_name} reason=no_prompt_in_meta")
-                continue
-            try:
-                md = json.loads(meta_file.read_text(encoding="utf-8"))
-                file_type = md.get("file_type")
-            except Exception:
-                file_type = None
+                key = (category, base_name)
+                if key in expected_prompts_dict:
+                    _, prompt_text = expected_prompts_dict[key]
+                else:
+                    print(f"WARN: Could not find prompt for {category}/{base_name}")
+                    log_line(run_dir, "RERUN SKIP", f"image={image_dir.name} category={category} name={base_name} reason=no_prompt_found")
+                    continue
+
+            # Determine file_type
+            file_type = None
+            if meta_file and meta_file.exists():
+                try:
+                    md = json.loads(meta_file.read_text(encoding="utf-8"))
+                    file_type = md.get("file_type")
+                except Exception:
+                    pass
+
+            # Infer file_type from category if not found
             if not file_type:
-                print(f"ERROR: meta missing file_type, please run scripts/backfill_file_type.py: {meta_file}")
-                log_line(run_dir, "RERUN SKIP", f"image={image_dir.name} category={category} name={base_name} reason=missing_file_type")
-                continue
+                file_type = "html" if category.startswith("html") else "jsx"
+
             futs.append(
                 pool.submit(
                     run_one_snapshot,
