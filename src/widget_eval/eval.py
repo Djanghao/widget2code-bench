@@ -1,13 +1,12 @@
 import os
-import sys
+import re
 import json
-import argparse
 import numpy as np
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 from widget_quality.utils import load_image, resize_to_match
-from widget_quality.perceptual import compute_perceptual, set_device
+from widget_quality.perceptual import compute_perceptual
 from widget_quality.layout import compute_layout
 from widget_quality.legibility import compute_legibility
 from widget_quality.style import compute_style
@@ -31,37 +30,42 @@ def convert_to_serializable(obj):
         return obj
 
 
-def evaluate_single_pair(gt_file, gt_dir, pred_dir):
+def _build_id_to_folder_map(directory):
+    """Scan a directory for subfolders and extract 4-digit IDs.
+
+    Returns a dict mapping 4-digit ID string -> folder name.
+    Raises ValueError if multiple folders map to the same ID.
+    """
+    id_to_folder = {}
+    for name in os.listdir(directory):
+        if not os.path.isdir(os.path.join(directory, name)):
+            continue
+        match = re.search(r'(\d{4})', name)
+        if not match:
+            continue
+        four_digit_id = match.group(1)
+        if four_digit_id in id_to_folder:
+            raise ValueError(
+                f"Duplicate ID '{four_digit_id}' found in '{directory}': "
+                f"folders '{id_to_folder[four_digit_id]}' and '{name}'"
+            )
+        id_to_folder[four_digit_id] = name
+    return id_to_folder
+
+
+def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
     """
     Evaluate a single GT-prediction pair.
-    Supports two directory structures:
-      - image_{num}/output.png  (old structure)
-      - {num}/pred.png          (new structure)
+
+    Args:
+        sample_id: The 4-digit ID string
+        gt_path: Full path to the GT image
+        pred_path: Full path to the prediction image
+        pred_folder: Folder containing the prediction (for saving evaluation.json)
+
     Returns (success, result_dict, error_message)
     """
     try:
-        num = gt_file.replace("gt_", "").replace(".png", "")
-        gt_path = os.path.join(gt_dir, gt_file)
-
-        possible_paths = [
-            (os.path.join(pred_dir, f"image_{num}"), "output.png"),
-            (os.path.join(pred_dir, num), "pred.png"),
-            (os.path.join(pred_dir, num), "output.png"),
-        ]
-
-        pred_path = None
-        image_folder = None
-
-        for folder, filename in possible_paths:
-            candidate_path = os.path.join(folder, filename)
-            if os.path.exists(candidate_path):
-                pred_path = candidate_path
-                image_folder = folder
-                break
-
-        if pred_path is None:
-            return (False, None, f"Missing prediction for {num}")
-
         gt_img = load_image(gt_path)
         pred_img = load_image(pred_path)
         gen = resize_to_match(gt_img, pred_img)
@@ -73,28 +77,39 @@ def evaluate_single_pair(gt_file, gt_dir, pred_dir):
         style = compute_style(gt_img, gen)
 
         result = composite_score(geo, perceptual, layout, legibility, style)
-        result["id"] = num
+        result["id"] = sample_id
 
-        evaluation_path = os.path.join(image_folder, "evaluation.json")
+        evaluation_path = os.path.join(pred_folder, "evaluation.json")
         with open(evaluation_path, 'w') as f:
             json.dump(convert_to_serializable(result), f, indent=2)
 
         return (True, result, None)
 
     except Exception as e:
-        num = gt_file.replace("gt_", "").replace(".png", "")
-        return (False, None, f"Error evaluating {num}: {str(e)}")
+        return (False, None, f"Error evaluating {sample_id}: {str(e)}")
 
 
-def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4):
+def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
+                   gt_name="input.png", pred_name="output.png"):
     """
     Load and evaluate GT-prediction pairs using multithreading.
+
+    Both gt_dir and pred_dir should contain subfolders with 4-digit IDs in their names.
+    The gt_name/pred_name specify which file to use inside each folder.
 
     Args:
         gt_dir: Path to ground truth directory
         pred_dir: Path to prediction directory
         num_workers: Number of worker threads (default: 4)
+        gt_name: Filename of the GT image inside each GT subfolder (e.g. "input.png")
+        pred_name: Filename of the prediction image inside each pred subfolder (e.g. "output.png")
     """
+    # Build ID -> folder maps
+    print("Scanning directories for 4-digit IDs...")
+    gt_id_map = _build_id_to_folder_map(gt_dir)
+    pred_id_map = _build_id_to_folder_map(pred_dir)
+
+    # Clean up old evaluation files
     print("Cleaning up old evaluation files...")
     cleaned_count = 0
 
@@ -103,66 +118,76 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4):
         os.remove(excel_path)
         cleaned_count += 1
 
-    for item in os.listdir(pred_dir):
-        item_path = os.path.join(pred_dir, item)
-        if os.path.isdir(item_path) and item.startswith("image_"):
-            eval_file = os.path.join(item_path, "evaluation.json")
-            if os.path.exists(eval_file):
-                os.remove(eval_file)
-                cleaned_count += 1
+    for folder_name in pred_id_map.values():
+        eval_file = os.path.join(pred_dir, folder_name, "evaluation.json")
+        if os.path.exists(eval_file):
+            os.remove(eval_file)
+            cleaned_count += 1
 
     if cleaned_count > 0:
         print(f"   Cleaned {cleaned_count} old evaluation files.\n")
 
-    gt_files = [f for f in os.listdir(gt_dir) if f.startswith("gt_") and f.endswith(".png")]
-    gt_files = sorted(gt_files)
-    total_gt = len(gt_files)
+    # Build task list by matching IDs present in both GT and pred
+    gt_ids = sorted(gt_id_map.keys())
+    total_gt = len(gt_ids)
 
-    counts = {
-        "total_gt": total_gt,
-        "pred_exists": 0,
-        "evaluated": 0,
-        "missing_pred": 0,
-        "errors": 0
-    }
+    tasks = []
+    missing_pred = 0
+    missing_gt_file = 0
+    for sample_id in gt_ids:
+        gt_folder = os.path.join(gt_dir, gt_id_map[sample_id])
+        gt_path = os.path.join(gt_folder, gt_name)
+        if not os.path.exists(gt_path):
+            missing_gt_file += 1
+            continue
+        if sample_id not in pred_id_map:
+            missing_pred += 1
+            continue
+        pred_folder = os.path.join(pred_dir, pred_id_map[sample_id])
+        pred_path = os.path.join(pred_folder, pred_name)
+        if not os.path.exists(pred_path):
+            missing_pred += 1
+            continue
+        tasks.append((sample_id, gt_path, pred_path, pred_folder))
+
+    total_tasks = len(tasks)
+    evaluated = 0
+    errors = 0
 
     all_scores = []
     lock = Lock()
 
-    print(f"Found {total_gt} ground truth images in '{gt_dir}'.")
+    print(f"Found {total_gt} GT folders, {len(pred_id_map)} pred folders, {total_tasks} matched pairs.")
     print(f"Using {num_workers} worker threads for parallel processing.\n")
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        future_to_file = {
-            executor.submit(evaluate_single_pair, gt_file, gt_dir, pred_dir): (i, gt_file)
-            for i, gt_file in enumerate(gt_files, start=1)
+        future_to_id = {
+            executor.submit(evaluate_single_pair, sid, gp, pp, pf): (i, sid)
+            for i, (sid, gp, pp, pf) in enumerate(tasks, start=1)
         }
 
-        for future in as_completed(future_to_file):
-            i, gt_file = future_to_file[future]
+        for future in as_completed(future_to_id):
+            i, sample_id = future_to_id[future]
             success, result, error_msg = future.result()
 
             with lock:
                 if success:
-                    counts["pred_exists"] += 1
-                    counts["evaluated"] += 1
+                    evaluated += 1
                     all_scores.append(result)
 
-                    print(f"[{i}/{total_gt}] {result['id']} evaluated -> "
+                    print(f"[{i}/{total_tasks}] {result['id']} evaluated -> "
                           f"Geo={result['Geometry']['geo_score']:.2f}")
                 else:
-                    if "Missing prediction" in error_msg:
-                        counts["missing_pred"] += 1
-                    else:
-                        counts["errors"] += 1
-                        print(f"[{i}/{total_gt}] Error: {error_msg}")
+                    errors += 1
+                    print(f"[{i}/{total_tasks}] Error: {error_msg}")
 
     print(f"\nSummary:")
-    print(f"  Total GT images: {counts['total_gt']}")
-    print(f"  With existing predictions: {counts['pred_exists']}")
-    print(f"  Missing predictions: {counts['missing_pred']}")
-    print(f"  Errors during evaluation: {counts['errors']}")
-    print(f"  Successfully evaluated: {counts['evaluated']}")
+    print(f"  Total GT folders: {total_gt}")
+    if missing_gt_file > 0:
+        print(f"  Missing GT file ({gt_name}): {missing_gt_file}")
+    print(f"  Missing predictions: {missing_pred}")
+    print(f"  Errors during evaluation: {errors}")
+    print(f"  Successfully evaluated: {evaluated}")
 
     if all_scores:
         keys = ["LayoutScore", "LegibilityScore", "StyleScore", "PerceptualScore", "Geometry"]
@@ -245,4 +270,4 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4):
         avg = {}
         print("No valid image pairs to evaluate.")
 
-    return all_scores, avg, counts
+    return all_scores, avg

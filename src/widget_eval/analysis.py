@@ -5,7 +5,6 @@ Creates metrics_stats.json and metrics.xlsx summary files.
 """
 
 import json
-import argparse
 from pathlib import Path
 from typing import Dict
 import pandas as pd
@@ -32,10 +31,6 @@ def load_evaluation_data(results_dir: Path) -> Dict[str, Dict]:
 
     for image_dir in sorted(results_dir.iterdir()):
         if not image_dir.is_dir():
-            continue
-
-        dir_name = image_dir.name
-        if not (dir_name.startswith("image_") or dir_name.isdigit()):
             continue
 
         eval_file = image_dir / "evaluation.json"
