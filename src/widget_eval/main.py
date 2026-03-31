@@ -44,10 +44,8 @@ Examples:
     parser.add_argument("--skip_eval", action="store_true",
                         help="Skip evaluation step (assumes evaluation.json files already exist)")
     parser.add_argument("--cuda", action="store_true", help="Use CUDA/GPU for computation")
-    parser.add_argument("--gt_name", type=str, default="input.png",
-                        help="GT image filename inside each subfolder (default: input.png)")
     parser.add_argument("--pred_name", type=str, default="output.png",
-                        help="Prediction image filename inside each subfolder (default: output.png)")
+                        help="Prediction filename inside each subfolder (default: output.png)")
 
     args = parser.parse_args()
 
@@ -72,8 +70,7 @@ Examples:
     print(f"Output Dir:       {output_dir}")
     print(f"Workers:          {args.workers}")
     print(f"CUDA:             {'Enabled' if args.cuda else 'Disabled (CPU)'}")
-    print(f"GT Name Pattern:  {args.gt_name}")
-    print(f"Pred Name Pattern:{args.pred_name}")
+    print(f"Pred Name:        {args.pred_name}")
     print("=" * 80)
     print()
 
@@ -85,7 +82,7 @@ Examples:
         print("=" * 80)
         print("STEP 1: Running Widget Quality Evaluation")
         print("=" * 80)
-        evaluate_pairs(str(gt_dir), str(pred_dir), args.workers, args.gt_name, args.pred_name)
+        evaluate_pairs(str(gt_dir), str(pred_dir), args.workers, pred_name=args.pred_name)
         print()
     else:
         print("Skipping evaluation step (--skip_eval)\n")

@@ -30,6 +30,29 @@ def convert_to_serializable(obj):
         return obj
 
 
+def _build_id_to_file_map(directory):
+    """Scan a directory for files and extract 4-digit IDs from filenames.
+
+    Returns a dict mapping 4-digit ID string -> filename.
+    Raises ValueError if multiple files map to the same ID.
+    """
+    id_to_file = {}
+    for name in os.listdir(directory):
+        if not os.path.isfile(os.path.join(directory, name)):
+            continue
+        match = re.search(r'(\d{4})', name)
+        if not match:
+            continue
+        four_digit_id = match.group(1)
+        if four_digit_id in id_to_file:
+            raise ValueError(
+                f"Duplicate ID '{four_digit_id}' found in '{directory}': "
+                f"files '{id_to_file[four_digit_id]}' and '{name}'"
+            )
+        id_to_file[four_digit_id] = name
+    return id_to_file
+
+
 def _build_id_to_folder_map(directory):
     """Scan a directory for subfolders and extract 4-digit IDs.
 
@@ -90,23 +113,22 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
 
 
 def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
-                   gt_name="input.png", pred_name="output.png"):
+                   pred_name="output.png"):
     """
     Load and evaluate GT-prediction pairs using multithreading.
 
-    Both gt_dir and pred_dir should contain subfolders with 4-digit IDs in their names.
-    The gt_name/pred_name specify which file to use inside each folder.
+    GT dir contains flat image files with 4-digit IDs in filenames (e.g. gt_0001.png).
+    Pred dir contains subfolders with 4-digit IDs in names (e.g. image_0001/output.png).
 
     Args:
-        gt_dir: Path to ground truth directory
-        pred_dir: Path to prediction directory
+        gt_dir: Path to ground truth directory (flat files)
+        pred_dir: Path to prediction directory (subfolders)
         num_workers: Number of worker threads (default: 4)
-        gt_name: Filename of the GT image inside each GT subfolder (e.g. "input.png")
-        pred_name: Filename of the prediction image inside each pred subfolder (e.g. "output.png")
+        pred_name: Prediction filename inside each subfolder (e.g. "output.png")
     """
-    # Build ID -> folder maps
+    # Build ID maps: GT from flat files, pred from subfolders
     print("Scanning directories for 4-digit IDs...")
-    gt_id_map = _build_id_to_folder_map(gt_dir)
+    gt_id_map = _build_id_to_file_map(gt_dir)
     pred_id_map = _build_id_to_folder_map(pred_dir)
 
     # Clean up old evaluation files
@@ -127,19 +149,14 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     if cleaned_count > 0:
         print(f"   Cleaned {cleaned_count} old evaluation files.\n")
 
-    # Build task list by matching IDs present in both GT and pred
+    # Build task list by matching IDs
     gt_ids = sorted(gt_id_map.keys())
     total_gt = len(gt_ids)
 
     tasks = []
     missing_pred = 0
-    missing_gt_file = 0
     for sample_id in gt_ids:
-        gt_folder = os.path.join(gt_dir, gt_id_map[sample_id])
-        gt_path = os.path.join(gt_folder, gt_name)
-        if not os.path.exists(gt_path):
-            missing_gt_file += 1
-            continue
+        gt_path = os.path.join(gt_dir, gt_id_map[sample_id])
         if sample_id not in pred_id_map:
             missing_pred += 1
             continue
@@ -157,7 +174,7 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     all_scores = []
     lock = Lock()
 
-    print(f"Found {total_gt} GT folders, {len(pred_id_map)} pred folders, {total_tasks} matched pairs.")
+    print(f"Found {total_gt} GT files, {len(pred_id_map)} pred folders, {total_tasks} matched pairs.")
     print(f"Using {num_workers} worker threads for parallel processing.\n")
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
@@ -182,9 +199,7 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
                     print(f"[{i}/{total_tasks}] Error: {error_msg}")
 
     print(f"\nSummary:")
-    print(f"  Total GT folders: {total_gt}")
-    if missing_gt_file > 0:
-        print(f"  Missing GT file ({gt_name}): {missing_gt_file}")
+    print(f"  Total GT files: {total_gt}")
     print(f"  Missing predictions: {missing_pred}")
     print(f"  Errors during evaluation: {errors}")
     print(f"  Successfully evaluated: {evaluated}")
