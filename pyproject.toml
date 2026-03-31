@@ -3,16 +3,16 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "widget-eval"
-version = "0.1.1"
-description = "Evaluation pipeline for widget generation — runs quality metrics and generates statistics reports."
+name = "widget2code-bench"
+version = "0.1.0"
+description = "Benchmark evaluation for widget code generation — 12 quality metrics across layout, legibility, perceptual, style, and geometry."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "Houston Zhang"},
 ]
-keywords = ["widget", "evaluation", "benchmark", "ui-generation"]
+keywords = ["widget", "evaluation", "benchmark", "ui-generation", "widget2code"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -22,8 +22,16 @@ classifiers = [
 ]
 
 dependencies = [
-    "widget-quality>=0.1.0",
-    "numpy>=1.24.0",
+    "numpy>=1.22",
+    "opencv-python>=4.6",
+    "Pillow>=9.0",
+    "scikit-image>=0.19",
+    "scipy>=1.8",
+    "scikit-learn>=1.0",
+    "easyocr>=1.6",
+    "torch>=1.12",
+    "torchvision>=0.13",
+    "lpips>=0.1.4",
     "pandas>=2.0.0",
     "openpyxl>=3.1.0",
 ]
@@ -32,10 +40,10 @@ dependencies = [
 dev = ["pytest", "build", "twine"]
 
 [project.scripts]
-widget-eval = "widget_eval.main:main"
+widget2code-bench = "widget2code_bench.main:main"
 
 [project.urls]
-Homepage = "https://github.com/WebAgent-Arena/widget-eval"
+Homepage = "https://github.com/Djanghao/widget2code-eval"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -4,15 +4,15 @@ Widget Evaluation Pipeline
 Performs widget quality evaluation and generates statistics.
 
 Usage:
-    widget-eval --gt_dir <GT_DIR> --pred_dir <PRED_DIR> [OPTIONS]
+    widget2code-bench --gt_dir <GT_DIR> --pred_dir <PRED_DIR> [OPTIONS]
 """
 
 import sys
 import argparse
 from pathlib import Path
 
-from widget_eval.eval import evaluate_pairs
-from widget_eval.analysis import generate_statistics
+from widget2code_bench.eval import evaluate_pairs
+from widget2code_bench.analysis import generate_statistics
 from widget_quality.perceptual import set_device
 
 
@@ -23,16 +23,16 @@ def main():
         epilog="""
 Examples:
   # Basic usage (CPU)
-  widget-eval --gt_dir /path/to/GT --pred_dir /path/to/results
+  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results
 
   # Use GPU for faster computation
-  widget-eval --gt_dir /path/to/GT --pred_dir /path/to/results --cuda
+  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --cuda
 
   # Custom output directory and more workers
-  widget-eval --gt_dir /path/to/GT --pred_dir /path/to/results --output_dir /path/to/stats --workers 8
+  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --output_dir /path/to/stats --workers 8
 
   # Skip evaluation (if evaluation.json already exists)
-  widget-eval --gt_dir /path/to/GT --pred_dir /path/to/results --skip_eval
+  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --skip_eval
         """
     )
 
