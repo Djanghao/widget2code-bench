@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "widget-eval"
+version = "0.1.0"
+description = "Evaluation pipeline for widget generation — runs quality metrics and generates statistics reports."
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Houston Zhang"},
+]
+keywords = ["widget", "evaluation", "benchmark", "ui-generation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+
+dependencies = [
+    "widget-quality>=0.1.0",
+    "numpy>=1.24.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "build", "twine"]
+
+[project.scripts]
+widget-eval = "widget_eval.main:main"
+
+[project.urls]
+Homepage = "https://github.com/WebAgent-Arena/widget-eval"
+
+[tool.setuptools.packages.find]
+where = ["src"]
