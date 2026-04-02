@@ -22,8 +22,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage (CPU)
+  # Batch mode: evaluate all pairs in directories
   widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results
+
+  # Single image mode: evaluate one pair
+  widget2code-bench --gt_image /path/to/gt.png --pred_image /path/to/pred.png
 
   # Use GPU for faster computation
   widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --cuda
@@ -36,8 +39,13 @@ Examples:
         """
     )
 
-    parser.add_argument("--gt_dir", type=str, required=True, help="Path to ground truth directory")
-    parser.add_argument("--pred_dir", type=str, required=True, help="Path to prediction directory")
+    # Single image mode
+    parser.add_argument("--gt_image", type=str, default=None, help="Path to a single ground truth image")
+    parser.add_argument("--pred_image", type=str, default=None, help="Path to a single prediction image")
+
+    # Batch mode
+    parser.add_argument("--gt_dir", type=str, default=None, help="Path to ground truth directory")
+    parser.add_argument("--pred_dir", type=str, default=None, help="Path to prediction directory")
     parser.add_argument("--output_dir", type=str, default=None,
                         help="Path to output directory for statistics (default: {pred_dir}/.analysis)")
     parser.add_argument("--workers", type=int, default=4, help="Number of worker threads (default: 4)")
@@ -49,6 +57,68 @@ Examples:
 
     args = parser.parse_args()
 
+    # Set device for perceptual metrics
+    set_device(use_cuda=args.cuda)
+
+    # Single image mode
+    if args.gt_image or args.pred_image:
+        if not args.gt_image or not args.pred_image:
+            print("Error: --gt_image and --pred_image must both be provided")
+            sys.exit(1)
+        _run_single(args)
+        return
+
+    # Batch mode
+    if not args.gt_dir or not args.pred_dir:
+        print("Error: Provide either --gt_image/--pred_image or --gt_dir/--pred_dir")
+        sys.exit(1)
+    _run_batch(args)
+
+
+def _run_single(args):
+    """Evaluate a single GT-prediction image pair. Prints results to stdout, no files saved."""
+    import json
+    from widget_quality.utils import load_image, resize_to_match
+    from widget_quality.perceptual import compute_perceptual
+    from widget_quality.layout import compute_layout
+    from widget_quality.legibility import compute_legibility
+    from widget_quality.style import compute_style
+    from widget_quality.geometry import compute_aspect_dimensionality_fidelity
+    from widget_quality.composite import composite_score
+    from widget2code_bench.eval import convert_to_serializable
+
+    gt_path = Path(args.gt_image)
+    pred_path = Path(args.pred_image)
+
+    if not gt_path.exists():
+        print(f"Error: GT image does not exist: {gt_path}")
+        sys.exit(1)
+    if not pred_path.exists():
+        print(f"Error: Prediction image does not exist: {pred_path}")
+        sys.exit(1)
+
+    print(f"GT Image:   {gt_path}")
+    print(f"Pred Image: {pred_path}")
+    print()
+
+    gt_img = load_image(str(gt_path))
+    pred_img = load_image(str(pred_path))
+    gen = resize_to_match(gt_img, pred_img)
+
+    geo = compute_aspect_dimensionality_fidelity(gt_img, pred_img)
+    perceptual = compute_perceptual(gt_img, gen)
+    layout = compute_layout(gt_img, gen)
+    legibility = compute_legibility(gt_img, gen)
+    style = compute_style(gt_img, gen)
+
+    result = composite_score(geo, perceptual, layout, legibility, style)
+    result = convert_to_serializable(result)
+
+    print(json.dumps(result, indent=2))
+
+
+def _run_batch(args):
+    """Run batch evaluation on directories."""
     gt_dir = Path(args.gt_dir)
     pred_dir = Path(args.pred_dir)
 
@@ -73,9 +143,6 @@ Examples:
     print(f"Pred Name:        {args.pred_name}")
     print("=" * 80)
     print()
-
-    # Set device for perceptual metrics
-    set_device(use_cuda=args.cuda)
 
     # Step 1: Run evaluation
     if not args.skip_eval:
