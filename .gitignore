@@ -3,3 +3,8 @@ dist/
 *.egg-info/
 __pycache__/
 *.pyc
+
+# local eval runs / test inputs
+image_*.png
+/Qwen3VL_size/
+/W2C-*/

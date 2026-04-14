@@ -4,6 +4,8 @@ from scipy.spatial.distance import cdist
 
 from .utils import edge_map, margin_from_mask
 
+MAX_DIFF = 5.0
+
 
 def compute_margin_asymmetry(mask_gt, mask_gen):
     """Variance imbalance of margins (normalized by mean)."""
@@ -17,7 +19,7 @@ def compute_margin_asymmetry(mask_gt, mask_gen):
 def compute_content_aspect_diff(mask_gt, mask_gen):
     """Difference in content bounding-box aspect ratio."""
     if np.sum(mask_gt) == 0 or np.sum(mask_gen) == 0:
-        return 0.0
+        return MAX_DIFF
 
     def bbox_ar(mask):
         ys, xs = np.where(mask > 0)
@@ -51,7 +53,7 @@ def analyze_internal_structure(mask_gt, mask_gen, min_area=10):
             (areas_gen.mean() / areas_gen.sum()) - (areas_gt.mean() / areas_gt.sum())
         )
     else:
-        area_ratio_diff = 0.0
+        area_ratio_diff = MAX_DIFF
 
     return {"AreaRatioDiff": float(area_ratio_diff)}
 
