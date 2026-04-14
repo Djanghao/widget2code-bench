@@ -21,21 +21,47 @@ def main():
         description="Widget Evaluation Pipeline - Evaluate and generate statistics",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Directory layout (batch mode):
+  --gt_dir   flat PNG files with 4-digit IDs (e.g. gt_0001.png)
+  --pred_dir subfolders with 4-digit IDs, each containing the file named by --pred_name
+
+Outputs (batch mode):
+  <pred_dir>/<subfolder>/evaluation.json        per-pair metrics (matched pairs)
+  <pred_dir>/<subfolder>/evaluation_black.json  metrics vs black fill (missing-pred folders only, when fill is on)
+  <pred_dir>/<subfolder>/evaluation_white.json  metrics vs white fill (missing-pred folders only, when fill is on)
+  <pred_dir>/evaluation.xlsx                    summary written during eval step
+  <pred_dir>/.analysis/metrics_stats.json       per-metric quartiles/mean/std (matched pairs)
+  <pred_dir>/.analysis/metrics.xlsx             summary written during stats step
+
+Summary xlsx rows (fill mode, default):
+  1) <run>                    average over matched pairs only
+  2) <run> (+ black fill)     missing preds treated as all-black images
+  3) <run> (+ white fill)     missing preds treated as all-white images
+  4) <run> (+ zero fill)      missing preds get worst-case values (LPIPS=1.0, others=0)
+
+Notes:
+  - Console prints "Success Rate: N/total = X.XX%" (matched pairs / total GT).
+  - All metrics are higher-is-better EXCEPT lp (LPIPS) which is lower-is-better.
+  - With --no_fill, missing predictions are simply skipped and the xlsx has only row 1.
+
 Examples:
-  # Batch mode: evaluate all pairs in directories
-  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results
-
-  # Single image mode: evaluate one pair
-  widget2code-bench --gt_image /path/to/gt.png --pred_image /path/to/pred.png
-
-  # Use GPU for faster computation
+  # Batch mode (default: black/white/zero fill for missing predictions)
   widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --cuda
 
-  # Custom output directory and more workers
-  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --output_dir /path/to/stats --workers 8
+  # Disable fill — only score matched pairs
+  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --cuda --no_fill
 
-  # Skip evaluation (if evaluation.json already exists)
+  # Pick a specific GPU
+  CUDA_VISIBLE_DEVICES=7 widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --cuda --workers 8
+
+  # Single image mode (prints JSON, no files written)
+  widget2code-bench --gt_image /path/to/gt.png --pred_image /path/to/pred.png --cuda
+
+  # Re-generate xlsx from existing evaluation.json files (no recomputation)
   widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --skip_eval
+
+  # Custom stats output directory and thread count
+  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --output_dir /path/to/stats --workers 8
         """
     )
 
@@ -54,6 +80,8 @@ Examples:
     parser.add_argument("--cuda", action="store_true", help="Use CUDA/GPU for computation")
     parser.add_argument("--pred_name", type=str, default="output.png",
                         help="Prediction filename inside each subfolder (default: output.png)")
+    parser.add_argument("--no_fill", action="store_true",
+                        help="Disable fill-image evaluation for missing predictions (black/white fill is enabled by default)")
 
     args = parser.parse_args()
 
@@ -141,6 +169,7 @@ def _run_batch(args):
     print(f"Workers:          {args.workers}")
     print(f"CUDA:             {'Enabled' if args.cuda else 'Disabled (CPU)'}")
     print(f"Pred Name:        {args.pred_name}")
+    print(f"Fill Missing:     {'Disabled' if args.no_fill else 'Enabled (black/white)'}")
     print("=" * 80)
     print()
 
@@ -149,7 +178,8 @@ def _run_batch(args):
         print("=" * 80)
         print("STEP 1: Running Widget Quality Evaluation")
         print("=" * 80)
-        evaluate_pairs(str(gt_dir), str(pred_dir), args.workers, pred_name=args.pred_name)
+        evaluate_pairs(str(gt_dir), str(pred_dir), args.workers, pred_name=args.pred_name,
+                       use_fill=not args.no_fill)
         print()
     else:
         print("Skipping evaluation step (--skip_eval)\n")
@@ -158,7 +188,8 @@ def _run_batch(args):
     print("=" * 80)
     print("STEP 2: Generating Metrics Statistics")
     print("=" * 80)
-    ret = generate_statistics(str(pred_dir), str(output_dir))
+    ret = generate_statistics(str(pred_dir), str(output_dir),
+                              use_fill=not args.no_fill)
     if ret != 0:
         sys.exit(ret)
 

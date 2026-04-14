@@ -76,6 +76,17 @@ def _build_id_to_folder_map(directory):
     return id_to_folder
 
 
+def _evaluate_gt_pred(gt_img, pred_img):
+    """Run all metrics on a GT/pred image pair. Returns result dict."""
+    gen = resize_to_match(gt_img, pred_img)
+    geo = compute_aspect_dimensionality_fidelity(gt_img, pred_img)
+    perceptual = compute_perceptual(gt_img, gen)
+    layout = compute_layout(gt_img, gen)
+    legibility = compute_legibility(gt_img, gen)
+    style = compute_style(gt_img, gen)
+    return composite_score(geo, perceptual, layout, legibility, style)
+
+
 def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
     """
     Evaluate a single GT-prediction pair.
@@ -91,15 +102,8 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
     try:
         gt_img = load_image(gt_path)
         pred_img = load_image(pred_path)
-        gen = resize_to_match(gt_img, pred_img)
 
-        geo = compute_aspect_dimensionality_fidelity(gt_img, pred_img)
-        perceptual = compute_perceptual(gt_img, gen)
-        layout = compute_layout(gt_img, gen)
-        legibility = compute_legibility(gt_img, gen)
-        style = compute_style(gt_img, gen)
-
-        result = composite_score(geo, perceptual, layout, legibility, style)
+        result = _evaluate_gt_pred(gt_img, pred_img)
         result["id"] = sample_id
 
         evaluation_path = os.path.join(pred_folder, "evaluation.json")
@@ -112,8 +116,155 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
         return (False, None, f"Error evaluating {sample_id}: {str(e)}")
 
 
+def evaluate_single_pair_fill(sample_id, gt_path, pred_folder):
+    """
+    Evaluate a single GT image against black and white fill images.
+
+    Saves evaluation_black.json and evaluation_white.json in pred_folder.
+
+    Returns (success, black_result, white_result, error_message)
+    """
+    try:
+        gt_img = load_image(gt_path)
+        black_img = np.zeros_like(gt_img)
+        white_img = np.ones_like(gt_img)
+
+        black_result = _evaluate_gt_pred(gt_img, black_img)
+        black_result["id"] = sample_id
+
+        white_result = _evaluate_gt_pred(gt_img, white_img)
+        white_result["id"] = sample_id
+
+        os.makedirs(pred_folder, exist_ok=True)
+        for fname, res in [("evaluation_black.json", black_result),
+                           ("evaluation_white.json", white_result)]:
+            with open(os.path.join(pred_folder, fname), 'w') as f:
+                json.dump(convert_to_serializable(res), f, indent=2)
+
+        return (True, black_result, white_result, None)
+
+    except Exception as e:
+        return (False, None, None, f"Error evaluating {sample_id} (fill): {str(e)}")
+
+
+def _compute_avg(scores, keys):
+    """Compute average metrics from a list of score dicts."""
+    avg = {}
+    for k in keys:
+        vals = [s[k] for s in scores if k in s]
+        if not vals:
+            continue
+        if isinstance(vals[0], dict):
+            avg[k] = {}
+            for sk in vals[0].keys():
+                sub_vals = [v[sk] for v in vals if sk in v]
+                avg[k][sk] = round(np.mean(sub_vals), 3)
+        else:
+            avg[k] = round(np.mean(vals), 3)
+    return avg
+
+
+# Worst-case fill values for missing samples (per sub-metric name).
+# Most metrics are "higher is better" -> worst = 0. LPIPS (lp) is "lower is better" -> worst = 1.0.
+MISSING_WORST_VALUES = {"lp": 1.0}
+
+
+def _scale_avg_for_missing(avg, num_matched, num_missing):
+    """Adjust avg as if num_missing extra samples contributed the worst-case value.
+
+    Missing samples contribute MISSING_WORST_VALUES[metric] (default 0) for each metric.
+    """
+    total = num_matched + num_missing
+    if total == 0 or num_missing == 0:
+        return avg
+
+    def _adjust(sub_key, value):
+        worst = MISSING_WORST_VALUES.get(sub_key, 0.0)
+        return round((value * num_matched + worst * num_missing) / total, 3)
+
+    scaled = {}
+    for k, v in avg.items():
+        if isinstance(v, dict):
+            scaled[k] = {sk: _adjust(sk, sv) for sk, sv in v.items()}
+        else:
+            scaled[k] = _adjust(k, v)
+    return scaled
+
+
+def _print_avg(avg):
+    """Print average metrics."""
+    for k, v in avg.items():
+        if isinstance(v, dict):
+            print(f"  {k}:")
+            for sk, sv in v.items():
+                print(f"    {sk:16s}: {sv:6.3f}")
+        else:
+            print(f"  {k:18s}: {v:6.3f}")
+
+
+def _build_excel_headers():
+    """Build the two header rows for the evaluation Excel."""
+    header_row1 = [None]
+    header_row2 = [None]
+
+    for category, metrics in [
+        ('LayoutScore', ['MarginAsymmetry', 'ContentAspectDiff', 'AreaRatioDiff']),
+        ('LegibilityScore', ['TextJaccard', 'ContrastDiff', 'ContrastLocalDiff']),
+        ('StyleScore', ['PaletteDistance', 'Vibrancy', 'PolarityConsistency']),
+        ('PerceptualScore', ['ssim', 'lp']),
+    ]:
+        header_row1.append(category)
+        header_row1.extend([None] * (len(metrics) - 1))
+        header_row2.extend(metrics)
+
+    header_row1.append('Geometry')
+    header_row2.append(None)
+
+    # Success rate columns (after Geometry)
+    header_row1.extend(['SuccessRate', None])
+    header_row2.extend(['ratio', 'count'])
+
+    return header_row1, header_row2
+
+
+def _build_excel_data_row(run_name, avg, success_ratio=None, success_count=None):
+    """Build a single data row for the evaluation Excel.
+
+    Args:
+        success_ratio: Success rate as percentage (e.g. 99.30)
+        success_count: Count string like "993/1000"
+    """
+    data_row = [run_name]
+
+    for category, metrics in [
+        ('LayoutScore', ['MarginAsymmetry', 'ContentAspectDiff', 'AreaRatioDiff']),
+        ('LegibilityScore', ['TextJaccard', 'ContrastDiff', 'ContrastLocalDiff']),
+        ('StyleScore', ['PaletteDistance', 'Vibrancy', 'PolarityConsistency']),
+        ('PerceptualScore', ['ssim', 'lp']),
+    ]:
+        cat_data = avg.get(category, {})
+        if isinstance(cat_data, dict):
+            for metric in metrics:
+                data_row.append(round(cat_data.get(metric, 0), 3))
+        else:
+            for _ in metrics:
+                data_row.append(0)
+
+    geo_data = avg.get('Geometry', {})
+    if isinstance(geo_data, dict):
+        data_row.append(round(geo_data.get('geo_score', 0), 3))
+    else:
+        data_row.append(0)
+
+    # Success rate columns
+    data_row.append(success_ratio)
+    data_row.append(success_count)
+
+    return data_row
+
+
 def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
-                   pred_name="output.png"):
+                   pred_name="output.png", use_fill=True):
     """
     Load and evaluate GT-prediction pairs using multithreading.
 
@@ -153,128 +304,141 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     gt_ids = sorted(gt_id_map.keys())
     total_gt = len(gt_ids)
 
-    tasks = []
+    matched_tasks = []   # (sample_id, gt_path, pred_path, pred_folder)
+    fill_tasks = []      # (sample_id, gt_path, pred_folder) — missing preds
     missing_pred = 0
+
     for sample_id in gt_ids:
         gt_path = os.path.join(gt_dir, gt_id_map[sample_id])
         if sample_id not in pred_id_map:
-            missing_pred += 1
+            if use_fill:
+                pred_folder = os.path.join(pred_dir, f"fill_{sample_id}")
+                fill_tasks.append((sample_id, gt_path, pred_folder))
+            else:
+                missing_pred += 1
             continue
         pred_folder = os.path.join(pred_dir, pred_id_map[sample_id])
         pred_path = os.path.join(pred_folder, pred_name)
         if not os.path.exists(pred_path):
-            missing_pred += 1
+            if use_fill:
+                fill_tasks.append((sample_id, gt_path, pred_folder))
+            else:
+                missing_pred += 1
             continue
-        tasks.append((sample_id, gt_path, pred_path, pred_folder))
+        matched_tasks.append((sample_id, gt_path, pred_path, pred_folder))
 
-    total_tasks = len(tasks)
+    total_matched = len(matched_tasks)
+    total_fill = len(fill_tasks)
+    total_tasks = total_matched + total_fill
     evaluated = 0
     errors = 0
 
     all_scores = []
+    all_black_scores = []
+    all_white_scores = []
     lock = Lock()
 
-    print(f"Found {total_gt} GT files, {len(pred_id_map)} pred folders, {total_tasks} matched pairs.")
+    print(f"Found {total_gt} GT files, {len(pred_id_map)} pred folders, {total_matched} matched pairs.")
+    if total_fill > 0:
+        print(f"  ({total_fill} missing predictions will be evaluated with black/white fill)")
     print(f"Using {num_workers} worker threads for parallel processing.\n")
 
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        future_to_id = {
-            executor.submit(evaluate_single_pair, sid, gp, pp, pf): (i, sid)
-            for i, (sid, gp, pp, pf) in enumerate(tasks, start=1)
-        }
+    task_counter = [0]  # mutable counter for progress
 
-        for future in as_completed(future_to_id):
-            i, sample_id = future_to_id[future]
-            success, result, error_msg = future.result()
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        future_to_info = {}
+
+        for sid, gp, pp, pf in matched_tasks:
+            fut = executor.submit(evaluate_single_pair, sid, gp, pp, pf)
+            future_to_info[fut] = ("matched", sid)
+
+        for sid, gp, pf in fill_tasks:
+            fut = executor.submit(evaluate_single_pair_fill, sid, gp, pf)
+            future_to_info[fut] = ("fill", sid)
+
+        for future in as_completed(future_to_info):
+            kind, sample_id = future_to_info[future]
 
             with lock:
-                if success:
-                    evaluated += 1
-                    all_scores.append(result)
+                task_counter[0] += 1
+                i = task_counter[0]
 
-                    print(f"[{i}/{total_tasks}] {result['id']} evaluated -> "
-                          f"Geo={result['Geometry']['geo_score']:.2f}")
+                if kind == "matched":
+                    success, result, error_msg = future.result()
+                    if success:
+                        evaluated += 1
+                        all_scores.append(result)
+                        print(f"[{i}/{total_tasks}] {result['id']} evaluated -> "
+                              f"Geo={result['Geometry']['geo_score']:.2f}")
+                    else:
+                        errors += 1
+                        print(f"[{i}/{total_tasks}] Error: {error_msg}")
                 else:
-                    errors += 1
-                    print(f"[{i}/{total_tasks}] Error: {error_msg}")
+                    success, black_res, white_res, error_msg = future.result()
+                    if success:
+                        evaluated += 1
+                        all_black_scores.append(black_res)
+                        all_white_scores.append(white_res)
+                        print(f"[{i}/{total_tasks}] {black_res['id']} evaluated (fill) -> "
+                              f"Geo(black)={black_res['Geometry']['geo_score']:.2f} "
+                              f"Geo(white)={white_res['Geometry']['geo_score']:.2f}")
+                    else:
+                        errors += 1
+                        print(f"[{i}/{total_tasks}] Error: {error_msg}")
+
+    num_matched = len(all_scores)
+    # Missing = (real missing pred) + (fill tasks that weren't matched) — both are "no output"
+    num_missing_total = missing_pred + total_fill
+    success_rate = (num_matched / total_gt * 100) if total_gt > 0 else 0.0
 
     print(f"\nSummary:")
     print(f"  Total GT files: {total_gt}")
-    print(f"  Missing predictions: {missing_pred}")
+    print(f"  Matched (with output): {num_matched}")
+    print(f"  Missing predictions: {num_missing_total}")
+    if total_fill > 0:
+        print(f"  Fill-evaluated (black/white): {len(all_black_scores)}")
     print(f"  Errors during evaluation: {errors}")
     print(f"  Successfully evaluated: {evaluated}")
+    print(f"  Success rate: {num_matched}/{total_gt} = {success_rate:.2f}%")
 
     if all_scores:
         keys = ["LayoutScore", "LegibilityScore", "StyleScore", "PerceptualScore", "Geometry"]
-        avg = {}
-
-        for k in keys:
-            vals = [s[k] for s in all_scores if k in s]
-
-            if isinstance(vals[0], dict):
-                sub_keys = vals[0].keys()
-                avg[k] = {}
-                for sk in sub_keys:
-                    sub_vals = [v[sk] for v in vals if sk in v]
-                    avg[k][sk] = round(np.mean(sub_vals), 3)
-            else:
-                avg[k] = round(np.mean(vals), 3)
+        avg = _compute_avg(all_scores, keys)
 
         print("\nAverage metrics across all evaluated pairs:")
-        for k, v in avg.items():
-            if isinstance(v, dict):
-                print(f"  {k}:")
-                for sk, sv in v.items():
-                    print(f"    {sk:16s}: {sv:6.3f}")
-            else:
-                print(f"  {k:18s}: {v:6.3f}")
+        _print_avg(avg)
 
         # Save average metrics to Excel
-        header_row1 = [None]
-        header_row2 = [None]
-        data_row = []
-
         run_name = os.path.basename(pred_dir)
-        data_row.append(run_name)
+        header_row1, header_row2 = _build_excel_headers()
 
-        if 'LayoutScore' in avg and isinstance(avg['LayoutScore'], dict):
-            layout_metrics = ['MarginAsymmetry', 'ContentAspectDiff', 'AreaRatioDiff']
-            header_row1.append('LayoutScore')
-            header_row1.extend([None] * (len(layout_metrics) - 1))
-            for metric in layout_metrics:
-                header_row2.append(metric)
-                data_row.append(round(avg['LayoutScore'].get(metric, 0), 3))
+        sr_ratio = round(success_rate, 2)
+        sr_count = f"{num_matched}/{total_gt}"
 
-        if 'LegibilityScore' in avg and isinstance(avg['LegibilityScore'], dict):
-            legibility_metrics = ['TextJaccard', 'ContrastDiff', 'ContrastLocalDiff']
-            header_row1.append('LegibilityScore')
-            header_row1.extend([None] * (len(legibility_metrics) - 1))
-            for metric in legibility_metrics:
-                header_row2.append(metric)
-                data_row.append(round(avg['LegibilityScore'].get(metric, 0), 3))
+        data_rows = [_build_excel_data_row(run_name, avg, sr_ratio, sr_count)]
 
-        if 'StyleScore' in avg and isinstance(avg['StyleScore'], dict):
-            style_metrics = ['PaletteDistance', 'Vibrancy', 'PolarityConsistency']
-            header_row1.append('StyleScore')
-            header_row1.extend([None] * (len(style_metrics) - 1))
-            for metric in style_metrics:
-                header_row2.append(metric)
-                data_row.append(round(avg['StyleScore'].get(metric, 0), 3))
+        if all_black_scores:
+            avg_black = _compute_avg(all_scores + all_black_scores, keys)
+            data_rows.append(_build_excel_data_row(
+                f"{run_name} (+ black fill)", avg_black, sr_ratio, sr_count))
+            print("\nAverage metrics (with black fill for missing):")
+            _print_avg(avg_black)
 
-        if 'PerceptualScore' in avg and isinstance(avg['PerceptualScore'], dict):
-            perceptual_metrics = ['ssim', 'lp']
-            header_row1.append('PerceptualScore')
-            header_row1.extend([None] * (len(perceptual_metrics) - 1))
-            for metric in perceptual_metrics:
-                header_row2.append(metric)
-                data_row.append(round(avg['PerceptualScore'].get(metric, 0), 3))
+        if all_white_scores:
+            avg_white = _compute_avg(all_scores + all_white_scores, keys)
+            data_rows.append(_build_excel_data_row(
+                f"{run_name} (+ white fill)", avg_white, sr_ratio, sr_count))
+            print("\nAverage metrics (with white fill for missing):")
+            _print_avg(avg_white)
 
-        if 'Geometry' in avg and isinstance(avg['Geometry'], dict):
-            header_row1.append('Geometry')
-            header_row2.append(None)
-            data_row.append(round(avg['Geometry']['geo_score'], 3))
+        if num_missing_total > 0:
+            avg_zero = _scale_avg_for_missing(avg, num_matched, num_missing_total)
+            data_rows.append(_build_excel_data_row(
+                f"{run_name} (+ zero fill)", avg_zero, sr_ratio, sr_count))
+            print("\nAverage metrics (with zero fill for missing):")
+            _print_avg(avg_zero)
 
-        df = pd.DataFrame([header_row1, header_row2, data_row])
+        df = pd.DataFrame([header_row1, header_row2] + data_rows)
 
         excel_path = os.path.join(pred_dir, "evaluation.xlsx")
         df.to_excel(excel_path, index=False, header=False)
