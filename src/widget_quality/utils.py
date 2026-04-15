@@ -31,7 +31,7 @@ def margin_from_mask(mask):
     rows, cols = np.where(mask > 0)
     h, w = mask.shape
     if len(rows) == 0 or len(cols) == 0:
-        return [h, w, h, w]
+        return [0, 0, 0, 0]
     return [rows.min(), w - cols.max(), h - rows.max(), cols.min()]
 
 
