@@ -38,40 +38,40 @@ def compute_vibrancy_consistency(gt, gen, bins=30):
 
 
 def compute_polarity_consistency(gt, gen, q=0.1, eps=1e-6):
-    L_gt = rgb2gray(gt)
-    L_gen = rgb2gray(gen)
+    L_gt = rgb2gray(gt)
+    L_gen = rgb2gray(gen)
 
-    def get_polarity_stats(L):
-        flat = np.sort(L.ravel())
-        k = max(1, int(q * flat.size))
+    def get_polarity_stats(L):
+        flat = np.sort(L.ravel())
+        k = max(1, int(q * flat.size))
 
-        bg = np.median(flat)
-        dark = np.mean(flat[:k])
-        bright = np.mean(flat[-k:])
+        bg = np.median(flat)
+        dark = np.mean(flat[:k])
+        bright = np.mean(flat[-k:])
 
-        # choose the stronger contrast side relative to bg
-        if abs(bg - dark) >= abs(bg - bright):
-            fg = dark
-        else:
-            fg = bright
+        # choose the stronger contrast side relative to bg
+        if abs(bg - dark) >= abs(bg - bright):
+            fg = dark
+        else:
+            fg = bright
 
-        contrast = bg - fg
-        polarity = np.sign(contrast)
-        strength = abs(contrast)
-        return polarity, strength
+        contrast = bg - fg
+        polarity = np.sign(contrast)
+        strength = abs(contrast)
+        return polarity, strength
 
-    pol_gt, str_gt = get_polarity_stats(L_gt)
-    pol_gen, str_gen = get_polarity_stats(L_gen)
+    pol_gt, str_gt = get_polarity_stats(L_gt)
+    pol_gen, str_gen = get_polarity_stats(L_gen)
 
-    # reject nearly flat images
-    if str_gt < eps or str_gen < eps:
-        return 0.0
+    # reject nearly flat images
+    if str_gt < eps or str_gen < eps:
+        return 0.0
 
-    pol_score = 1.0 if pol_gt == pol_gen else 0.0
-    mag_diff = abs(str_gt - str_gen)
+    pol_score = 1.0 if pol_gt == pol_gen else 0.0
+    mag_diff = abs(str_gt - str_gen)
 
-    score = pol_score * np.exp(-mag_diff * 5)
-    return float(np.clip(score, 0, 1))
+    score = pol_score * np.exp(-mag_diff * 5)
+    return float(np.clip(score, 0, 1))
 
 
 def compute_style(gt, gen):
