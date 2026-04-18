@@ -76,7 +76,7 @@ def calculate_statistics(evaluation_data: Dict[str, Dict]) -> pd.DataFrame:
 
 
 def _build_metrics_data_row(run_name: str, df: pd.DataFrame,
-                             success_ratio=None, success_count=None) -> list:
+                             success_ratio=None) -> list:
     """Build a single data row from a DataFrame of per-image metrics."""
     data_row = [run_name]
     for category, metrics in METRIC_CATEGORIES.items():
@@ -86,13 +86,40 @@ def _build_metrics_data_row(run_name: str, df: pd.DataFrame,
             for metric in metrics:
                 data_row.append(round(df[metric].mean(), 3))
     data_row.append(success_ratio)
-    data_row.append(success_count)
+    return data_row
+
+
+def _build_combined_row(run_name: str, mode_dfs: list,
+                        success_ratio=None) -> list:
+    """Build a single row combining multiple fill modes with slash-joined values.
+
+    mode_dfs: list of (mode_label, df) tuples in desired order
+              e.g. [("raw", df), ("black", df_black), ("white", df_white), ("zero", df_zero)]
+    """
+    if len(mode_dfs) == 1:
+        data_row = [run_name]
+    else:
+        mode_labels = "/".join(label for label, _ in mode_dfs)
+        data_row = [f"{run_name}:{mode_labels}"]
+
+    def join_vals(metric):
+        vals = [round(mdf[metric].mean(), 3) for _, mdf in mode_dfs]
+        return vals[0] if len(vals) == 1 else "/".join(str(v) for v in vals)
+
+    for category, metrics in METRIC_CATEGORIES.items():
+        if category == "Geometry":
+            data_row.append(join_vals('geo_score'))
+        else:
+            for metric in metrics:
+                data_row.append(join_vals(metric))
+
+    data_row.append(success_ratio)
     return data_row
 
 
 def save_statistics_files(df: pd.DataFrame, output_dir: Path,
                           extra_dfs: dict = None,
-                          success_ratio=None, success_count=None):
+                          success_ratio=None):
     """Save metrics_stats.json and metrics.xlsx files.
 
     Args:
@@ -100,8 +127,7 @@ def save_statistics_files(df: pd.DataFrame, output_dir: Path,
         output_dir: Output directory
         extra_dfs: Optional dict of {"label_suffix": DataFrame} for additional rows
                    (e.g. {"+ black fill": df_with_black, "+ white fill": df_with_white})
-        success_ratio: Success rate as percentage (e.g. 99.30) — appears in each row
-        success_count: Success count string like "993/1000" — appears in each row
+        success_ratio: Success rate as percentage string (e.g. "99.3%")
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -150,15 +176,16 @@ def save_statistics_files(df: pd.DataFrame, output_dir: Path,
             header_row1.extend([None] * (len(metrics) - 1))
             header_row2.extend(metrics)
 
-    header_row1.extend(['SuccessRate', None])
-    header_row2.extend(['ratio', 'count'])
+    header_row1.append('SuccessRate')
+    header_row2.append(None)
 
-    data_rows = [_build_metrics_data_row(run_name, df, success_ratio, success_count)]
-
+    label_map = {"+ black fill": "black", "+ white fill": "white", "+ zero fill": "zero"}
+    mode_dfs = [("raw", df)]
     if extra_dfs:
         for label_suffix, extra_df in extra_dfs.items():
-            data_rows.append(_build_metrics_data_row(
-                f"{run_name} ({label_suffix})", extra_df, success_ratio, success_count))
+            mode_dfs.append((label_map.get(label_suffix, label_suffix), extra_df))
+
+    data_rows = [_build_combined_row(run_name, mode_dfs, success_ratio)]
 
     metrics_df = pd.DataFrame([header_row1, header_row2] + data_rows)
     metrics_df.to_excel(metrics_xlsx, index=False, header=False)
@@ -205,24 +232,17 @@ def generate_statistics(results_dir: str, output_dir: str,
         white_data = load_evaluation_data(results_dir, "evaluation_white.json")
         num_missing = max(len(black_data), len(white_data))
 
-        if black_data:
-            df_black = calculate_statistics(black_data)
-            df_with_black = pd.concat([df, df_black], ignore_index=True)
-        else:
-            df_with_black = df
-
-        if white_data:
-            df_white = calculate_statistics(white_data)
-            df_with_white = pd.concat([df, df_white], ignore_index=True)
-        else:
-            df_with_white = df
-
-        extra_dfs = {
-            "+ black fill": df_with_black,
-            "+ white fill": df_with_white,
-        }
-
         if num_missing > 0:
+            df_with_black = df
+            if black_data:
+                df_black = calculate_statistics(black_data)
+                df_with_black = pd.concat([df, df_black], ignore_index=True)
+
+            df_with_white = df
+            if white_data:
+                df_white = calculate_statistics(white_data)
+                df_with_white = pd.concat([df, df_white], ignore_index=True)
+
             # Worst-case fill: most metrics get 0 (higher-is-better),
             # LPIPS (lp) gets 1.0 (lower-is-better -> worst = 1.0).
             worst_rows = pd.DataFrame(0.0, index=range(num_missing), columns=df.columns)
@@ -231,19 +251,23 @@ def generate_statistics(results_dir: str, output_dir: str,
             if 'image_id' in df.columns:
                 worst_rows['image_id'] = [f'zero_{i}' for i in range(num_missing)]
             df_with_zero = pd.concat([df, worst_rows], ignore_index=True)
-            extra_dfs["+ zero fill"] = df_with_zero
+
+            extra_dfs = {
+                "+ black fill": df_with_black,
+                "+ white fill": df_with_white,
+                "+ zero fill": df_with_zero,
+            }
 
     total = num_matched + num_missing
     success_ratio = None
-    success_count = None
-    if total > 0 and num_missing > 0:
-        # Only report success rate when we know the total (fill mode gives us missing count)
-        success_ratio = round(num_matched / total * 100, 2)
-        success_count = f"{num_matched}/{total}"
-        print(f"\nSuccess Rate: {num_matched}/{total} = {success_ratio:.2f}%")
+    if use_fill and total > 0:
+        # In fill mode we know the total (matched + missing with fill files)
+        pct = round(num_matched / total * 100, 2)
+        success_ratio = f"{pct}%"
+        print(f"\nSuccess Rate: {num_matched}/{total} = {pct:.2f}%")
 
     save_statistics_files(df, output_dir, extra_dfs=extra_dfs,
-                          success_ratio=success_ratio, success_count=success_count)
+                          success_ratio=success_ratio)
 
     print(f"\nSummary Statistics:")
     print(f"  Total images analyzed: {len(df)}")
