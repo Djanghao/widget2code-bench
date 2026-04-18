@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "widget2code-bench"
-version = "0.2.5"
+version = "0.2.6"
 description = "Benchmark evaluation for widget code generation — 12 quality metrics across layout, legibility, perceptual, style, and geometry."
 readme = "README.md"
 license = {text = "Apache-2.0"}
