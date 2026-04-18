@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from scipy.spatial.distance import cdist
 
-from .utils import edge_map, margin_from_mask
+from .utils import edge_map, margin_from_mask, remove_border_touching_components
 
 MAX_DIFF = 5.0
 
@@ -68,6 +68,9 @@ def compute_layout(gt, gen):
     kernel = np.ones((3, 3), np.uint8)
     mask_gt = cv2.dilate(e_gt, kernel)
     mask_gen = cv2.dilate(e_gen, kernel)
+
+    mask_gt = remove_border_touching_components(mask_gt)
+    mask_gen = remove_border_touching_components(mask_gen)
 
     margin_asym = compute_margin_asymmetry(mask_gt, mask_gen)
     aspect_diff = compute_content_aspect_diff(mask_gt, mask_gen)

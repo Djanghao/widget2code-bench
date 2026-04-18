@@ -40,3 +40,25 @@ def resize_to_match(gt, gen):
     h_gt, w_gt = gt.shape[:2]
     gen_resized = cv2.resize(gen, (w_gt, h_gt), interpolation=cv2.INTER_AREA)
     return gen_resized
+
+
+def remove_border_touching_components(mask):
+    """
+    mask: binary mask, 0/255 or 0/1
+    returns cleaned binary mask
+    """
+    mask = (mask > 0).astype(np.uint8)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
+    H, W = mask.shape
+    cleaned = np.zeros_like(mask)
+
+    for i in range(1, num_labels):  # skip background
+        x, y, w, h, area = stats[i]
+
+        touches_border = (x == 0) or (y == 0) or (x + w == W) or (y + h == H)
+        if not touches_border:
+            cleaned[labels == i] = 255
+
+    return cleaned.astype(np.uint8)
