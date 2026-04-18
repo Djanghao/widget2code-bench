@@ -33,7 +33,7 @@ Evaluate all matched pairs in directories.
 
 ```bash
 widget2code-bench \
-  --gt_dir /path/to/GT \
+  --gt_dir /path/to/GT \ # /shared/zhixiang_team/widget_research/Comparison/GT
   --pred_dir /path/to/predictions \
   --pred_name output.png \
   --cuda
