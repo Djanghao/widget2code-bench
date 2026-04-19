@@ -106,7 +106,9 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
         result = _evaluate_gt_pred(gt_img, pred_img)
         result["id"] = sample_id
 
-        evaluation_path = os.path.join(pred_folder, "evaluation.json")
+        eval_dir = os.path.join(pred_folder, "evaluation")
+        os.makedirs(eval_dir, exist_ok=True)
+        evaluation_path = os.path.join(eval_dir, "evaluation.json")
         with open(evaluation_path, 'w') as f:
             json.dump(convert_to_serializable(result), f, indent=2)
 
@@ -135,10 +137,11 @@ def evaluate_single_pair_fill(sample_id, gt_path, pred_folder):
         white_result = _evaluate_gt_pred(gt_img, white_img)
         white_result["id"] = sample_id
 
-        os.makedirs(pred_folder, exist_ok=True)
+        eval_dir = os.path.join(pred_folder, "evaluation")
+        os.makedirs(eval_dir, exist_ok=True)
         for fname, res in [("evaluation_black.json", black_result),
                            ("evaluation_white.json", white_result)]:
-            with open(os.path.join(pred_folder, fname), 'w') as f:
+            with open(os.path.join(eval_dir, fname), 'w') as f:
                 json.dump(convert_to_serializable(res), f, indent=2)
 
         return (True, black_result, white_result, None)
@@ -158,9 +161,9 @@ def _compute_avg(scores, keys):
             avg[k] = {}
             for sk in vals[0].keys():
                 sub_vals = [v[sk] for v in vals if sk in v]
-                avg[k][sk] = round(np.mean(sub_vals), 3)
+                avg[k][sk] = round(np.mean(sub_vals), 2)
         else:
-            avg[k] = round(np.mean(vals), 3)
+            avg[k] = round(np.mean(vals), 2)
     return avg
 
 
@@ -180,7 +183,7 @@ def _scale_avg_for_missing(avg, num_matched, num_missing):
 
     def _adjust(sub_key, value):
         worst = MISSING_WORST_VALUES.get(sub_key, 0.0)
-        return round((value * num_matched + worst * num_missing) / total, 3)
+        return round((value * num_matched + worst * num_missing) / total, 2)
 
     scaled = {}
     for k, v in avg.items():
@@ -245,14 +248,14 @@ def _build_excel_data_row(run_name, avg, success_ratio=None, success_count=None)
         cat_data = avg.get(category, {})
         if isinstance(cat_data, dict):
             for metric in metrics:
-                data_row.append(round(cat_data.get(metric, 0), 3))
+                data_row.append(round(cat_data.get(metric, 0), 2))
         else:
             for _ in metrics:
                 data_row.append(0)
 
     geo_data = avg.get('Geometry', {})
     if isinstance(geo_data, dict):
-        data_row.append(round(geo_data.get('geo_score', 0), 3))
+        data_row.append(round(geo_data.get('geo_score', 0), 2))
     else:
         data_row.append(0)
 
@@ -264,7 +267,7 @@ def _build_excel_data_row(run_name, avg, success_ratio=None, success_count=None)
 
 
 def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
-                   pred_name="output.png", use_fill=True):
+                   pred_name="output.png"):
     """
     Load and evaluate GT-prediction pairs using multithreading.
 
@@ -292,10 +295,13 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
         cleaned_count += 1
 
     for folder_name in pred_id_map.values():
-        eval_file = os.path.join(pred_dir, folder_name, "evaluation.json")
-        if os.path.exists(eval_file):
-            os.remove(eval_file)
-            cleaned_count += 1
+        eval_subdir = os.path.join(pred_dir, folder_name, "evaluation")
+        for fname in ("evaluation.json", "evaluation_black.json", "evaluation_white.json"):
+            for candidate in (os.path.join(eval_subdir, fname),
+                              os.path.join(pred_dir, folder_name, fname)):
+                if os.path.exists(candidate):
+                    os.remove(candidate)
+                    cleaned_count += 1
 
     if cleaned_count > 0:
         print(f"   Cleaned {cleaned_count} old evaluation files.\n")
@@ -306,24 +312,17 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
 
     matched_tasks = []   # (sample_id, gt_path, pred_path, pred_folder)
     fill_tasks = []      # (sample_id, gt_path, pred_folder) — missing preds
-    missing_pred = 0
 
     for sample_id in gt_ids:
         gt_path = os.path.join(gt_dir, gt_id_map[sample_id])
         if sample_id not in pred_id_map:
-            if use_fill:
-                pred_folder = os.path.join(pred_dir, f"fill_{sample_id}")
-                fill_tasks.append((sample_id, gt_path, pred_folder))
-            else:
-                missing_pred += 1
+            pred_folder = os.path.join(pred_dir, f"fill_{sample_id}")
+            fill_tasks.append((sample_id, gt_path, pred_folder))
             continue
         pred_folder = os.path.join(pred_dir, pred_id_map[sample_id])
         pred_path = os.path.join(pred_folder, pred_name)
         if not os.path.exists(pred_path):
-            if use_fill:
-                fill_tasks.append((sample_id, gt_path, pred_folder))
-            else:
-                missing_pred += 1
+            fill_tasks.append((sample_id, gt_path, pred_folder))
             continue
         matched_tasks.append((sample_id, gt_path, pred_path, pred_folder))
 
@@ -387,8 +386,7 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
                         print(f"[{i}/{total_tasks}] Error: {error_msg}")
 
     num_matched = len(all_scores)
-    # Missing = (real missing pred) + (fill tasks that weren't matched) — both are "no output"
-    num_missing_total = missing_pred + total_fill
+    num_missing_total = total_fill
     success_rate = (num_matched / total_gt * 100) if total_gt > 0 else 0.0
 
     print(f"\nSummary:")
