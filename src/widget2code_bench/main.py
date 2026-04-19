@@ -84,8 +84,8 @@ Examples:
                         help="Number of worst samples to save per metric (default: 20)")
     parser.add_argument("--catastrophic_min", type=int, default=5,
                         help="Sample flagged catastrophic if bad on this many metrics (default: 5)")
-    parser.add_argument("--bad_workers", type=int, default=32,
-                        help="Thread pool size for bad_cases copy+viz (default: 32)")
+    parser.add_argument("--bad_workers", type=int, default=64,
+                        help="Process pool size for bad_cases copy+viz (default: 64)")
 
     args = parser.parse_args()
 
