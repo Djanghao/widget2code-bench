@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "widget2code-bench"
-version = "0.2.6"
+version = "0.2.7"
 description = "Benchmark evaluation for widget code generation — 12 quality metrics across layout, legibility, perceptual, style, and geometry."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -34,6 +34,7 @@ dependencies = [
     "lpips>=0.1.4",
     "pandas>=2.0.0",
     "openpyxl>=3.1.0",
+    "matplotlib>=3.5",
 ]
 
 [project.optional-dependencies]

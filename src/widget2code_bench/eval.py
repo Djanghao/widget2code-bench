@@ -87,7 +87,7 @@ def _evaluate_gt_pred(gt_img, pred_img):
     return composite_score(geo, perceptual, layout, legibility, style)
 
 
-def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
+def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder, verbose=True):
     """
     Evaluate a single GT-prediction pair.
 
@@ -96,6 +96,8 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
         gt_path: Full path to the GT image
         pred_path: Full path to the prediction image
         pred_folder: Folder containing the prediction (for saving evaluation.json)
+        verbose: If True, also produce per-metric visualization PNGs in
+                 <pred_folder>/evaluation/viz/.
 
     Returns (success, result_dict, error_message)
     """
@@ -111,6 +113,12 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
         evaluation_path = os.path.join(eval_dir, "evaluation.json")
         with open(evaluation_path, 'w') as f:
             json.dump(convert_to_serializable(result), f, indent=2)
+
+        if verbose:
+            from widget_quality.visualize import generate_visualizations
+            gen = resize_to_match(gt_img, pred_img)
+            lpips_val = float(result.get("PerceptualScore", {}).get("lp", 0.0))
+            generate_visualizations(gt_img, pred_img, gen, pred_folder, lpips_val)
 
         return (True, result, None)
 
@@ -267,7 +275,7 @@ def _build_excel_data_row(run_name, avg, success_ratio=None, success_count=None)
 
 
 def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
-                   pred_name="output.png"):
+                   pred_name="output.png", verbose=True):
     """
     Load and evaluate GT-prediction pairs using multithreading.
 
@@ -348,7 +356,7 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
         future_to_info = {}
 
         for sid, gp, pp, pf in matched_tasks:
-            fut = executor.submit(evaluate_single_pair, sid, gp, pp, pf)
+            fut = executor.submit(evaluate_single_pair, sid, gp, pp, pf, verbose)
             future_to_info[fut] = ("matched", sid)
 
         for sid, gp, pf in fill_tasks:

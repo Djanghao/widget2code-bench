@@ -29,6 +29,7 @@ Outputs (batch mode):
   <pred_dir>/<subfolder>/evaluation/evaluation.json         per-pair metrics (matched pairs)
   <pred_dir>/<subfolder>/evaluation/evaluation_black.json   per-pair metrics vs black fill (missing preds only)
   <pred_dir>/<subfolder>/evaluation/evaluation_white.json   per-pair metrics vs white fill (missing preds only)
+  <pred_dir>/<subfolder>/evaluation/viz/*.png               per-metric computation visualizations (unless --minimal)
   <pred_dir>/evaluation.xlsx                          summary written during eval step
   <pred_dir>/.analysis/metrics_stats.json             per-metric quartiles/mean/std (matched pairs)
   <pred_dir>/.analysis/metrics.xlsx                   4-row combined summary (raw/black/white/zero)
@@ -77,6 +78,8 @@ Examples:
     parser.add_argument("--cuda", action="store_true", help="Use CUDA/GPU for computation")
     parser.add_argument("--pred_name", type=str, default="output.png",
                         help="Prediction filename inside each subfolder (default: output.png)")
+    parser.add_argument("--minimal", action="store_true",
+                        help="Minimal mode: skip per-metric visualization PNGs (default: verbose with viz)")
 
     args = parser.parse_args()
 
@@ -164,6 +167,7 @@ def _run_batch(args):
     print(f"Workers:          {args.workers}")
     print(f"CUDA:             {'Enabled' if args.cuda else 'Disabled (CPU)'}")
     print(f"Pred Name:        {args.pred_name}")
+    print(f"Mode:             {'Minimal (no viz)' if args.minimal else 'Verbose (per-metric viz)'}")
     print("=" * 80)
     print()
 
@@ -172,7 +176,8 @@ def _run_batch(args):
         print("=" * 80)
         print("STEP 1: Running Widget Quality Evaluation")
         print("=" * 80)
-        evaluate_pairs(str(gt_dir), str(pred_dir), args.workers, pred_name=args.pred_name)
+        evaluate_pairs(str(gt_dir), str(pred_dir), args.workers,
+                       pred_name=args.pred_name, verbose=not args.minimal)
         print()
     else:
         print("Skipping evaluation step (--skip_eval)\n")

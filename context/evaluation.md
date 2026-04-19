@@ -64,35 +64,72 @@ gt_dir/                     pred_dir/
 | `--output_dir` | `{pred_dir}/.analysis` | Statistics output directory |
 | `--workers` | 4 | Parallel threads |
 | `--cuda` | off | Enable GPU |
-| `--skip_eval` | off | Skip evaluation, only generate statistics |
-| `--no_fill` | off | Disable fill-image evaluation for missing predictions (fill is on by default) |
+| `--skip_eval` | off | Skip evaluation, only regenerate statistics xlsx files from existing `evaluation.json` |
+| `--minimal` | off | Skip per-metric visualization PNGs (default: verbose with viz) |
 
 ## Output (batch mode)
 
-1. **Evaluation** — Saves `evaluation.json` in each prediction subfolder + `evaluation.xlsx` in pred_dir
-2. **Statistics** — Saves `metrics_stats.json` and `metrics.xlsx` to `{pred_dir}/.analysis/`
+### Per-sample outputs
 
-### Handling missing predictions (fill mode, default)
-
-When a GT image has no matching prediction, the evaluator also scores it against synthetic
-fill images so the summary xlsx can show how different assumptions about missing samples
-affect the aggregate metrics. Each summary xlsx contains **one row per run**, with metric
-values slash-joined across fill modes.
-
-**All predictions present** — row label `<run>`, each cell is a single value:
+Every matched pair writes one `evaluation.json` plus (by default) a full per-metric
+visualization set into its sample folder:
 
 ```
-<run>  34.25  17.113  43.526  ...  99.77  100.0%
+<pred_dir>/
+  image_0001/
+    output.png
+    evaluation/
+      evaluation.json                 # 12 metrics
+      viz/
+        MarginAsymmetry.png
+        ContentAspectDiff.png
+        AreaRatioDiff.png
+        TextJaccard.png
+        ContrastDiff.png
+        ContrastLocalDiff.png
+        PaletteDistance.png
+        Vibrancy.png
+        PolarityConsistency.png
+        ssim.png
+        lp.png
+        geo_score.png
 ```
 
-**Some predictions missing** — row label `<run>:raw/black/white/zero`, each cell carries
-four slash-joined means in that order:
+Each viz PNG shows **left/middle = GT/Pred intermediates** and **right = formula +
+intermediate values + final score**, so you can see exactly how the metric was computed.
+
+Pass `--minimal` to skip the `viz/` directory (much faster, ~10x less disk).
+
+### Missing-prediction handling
+
+The evaluator always produces all four fill modes. When a GT image has no matching
+prediction:
+
+- Existing subfolder, pred missing → fill results go in the same folder's `evaluation/`
+- No subfolder at all → evaluator creates `pred_dir/fill_<id>/evaluation/`
+
+In either case it writes:
 
 ```
-<run>:raw/black/white/zero  30.826/31.996/31.996/29.778  ...  95.145/95.31/95.31/91.91  96.6%
+evaluation/
+  evaluation_black.json   # GT vs all-black image
+  evaluation_white.json   # GT vs all-white image
 ```
 
-The four fill modes:
+`zero` fill isn't a per-sample file — it's a worst-case contribution (LPIPS = 1.0, others = 0)
+used only when aggregating the combined summary.
+
+### Aggregate outputs (`.analysis/`)
+
+```
+<pred_dir>/.analysis/
+  metrics_stats.json                 # per-metric quartiles/mean/std over matched pairs
+  metrics.xlsx                       # 4-row combined summary (raw/black/white/zero)
+  raw/<run>-raw-<ver>.xlsx           # single-row summary per mode
+  black/<run>-black-<ver>.xlsx
+  white/<run>-white-<ver>.xlsx
+  zero/<run>-zero-<ver>.xlsx
+```
 
 | Mode | Description |
 |------|-------------|
@@ -101,9 +138,9 @@ The four fill modes:
 | `white` | Missing preds scored against an all-white image |
 | `zero`  | Missing preds contribute the worst-case value (LPIPS = 1.0, others = 0) |
 
-A single `SuccessRate` column is appended after `Geometry`, showing matched / total as a
-percentage string (e.g. `96.6%`). Pass `--no_fill` to disable fill-image evaluation (only
-the raw mode is reported and missing preds are skipped).
+All numeric values are rounded to **2 decimals**. Combined `metrics.xlsx` has a two-level
+header grouping metrics by category (Layout / Legibility / Style / Perceptual / Geometry)
+plus `SuccessRate` (`ratio`, `count`). Per-mode xlsx uses flat single-level headers.
 
 All metrics are **higher-is-better** except `lp` (LPIPS), which is a distance (lower-is-better).
 
