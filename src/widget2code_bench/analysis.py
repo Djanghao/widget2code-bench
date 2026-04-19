@@ -64,7 +64,7 @@ BAD_WORKERS = 64
 
 
 try:
-    BENCH_VERSION = _pkg_version("widget2code-bench")
+    BENCH_VERSION = _pkg_version("widget2code-bench-exp")
 except PackageNotFoundError:
     BENCH_VERSION = "0.0.0"
 

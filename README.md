@@ -1,4 +1,4 @@
-# widget2code-bench
+# widget2code-bench-exp
 
 Benchmark evaluation for widget code generation — 12 quality metrics across layout, legibility, perceptual, style, and geometry.
 
@@ -8,8 +8,8 @@ Benchmark evaluation for widget code generation — 12 quality metrics across la
 # 1. Install PyTorch with CUDA support first (skip if CPU-only)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 
-# 2. Install widget2code-bench
-pip install widget2code-bench
+# 2. Install widget2code-bench-exp
+pip install widget2code-bench-exp
 ```
 
 > **Note:** PyPI only ships CPU-only PyTorch. To use `--cuda`, you must install PyTorch from the [official index](https://pytorch.org/get-started/locally/) **before** installing this package.
@@ -21,7 +21,7 @@ pip install widget2code-bench
 Evaluate one GT-prediction pair. Prints JSON results to stdout, no files saved.
 
 ```bash
-widget2code-bench \
+widget2code-bench-exp \
   --gt_image /path/to/gt.png \
   --pred_image /path/to/pred.png \
   --cuda
@@ -32,7 +32,7 @@ widget2code-bench \
 Evaluate all matched pairs in directories.
 
 ```bash
-widget2code-bench \
+widget2code-bench-exp \
   --gt_dir /path/to/GT \ # /shared/zhixiang_team/widget_research/Comparison/GT
   --pred_dir /path/to/predictions \
   --pred_name output.png \

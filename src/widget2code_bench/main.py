@@ -4,7 +4,7 @@ Widget Evaluation Pipeline
 Performs widget quality evaluation and generates statistics.
 
 Usage:
-    widget2code-bench --gt_dir <GT_DIR> --pred_dir <PRED_DIR> [OPTIONS]
+    widget2code-bench-exp --gt_dir <GT_DIR> --pred_dir <PRED_DIR> [OPTIONS]
 """
 
 import sys
@@ -47,19 +47,19 @@ Notes:
 
 Examples:
   # Batch mode (always produces raw/black/white/zero)
-  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --cuda
+  widget2code-bench-exp --gt_dir /path/to/GT --pred_dir /path/to/results --cuda
 
   # Pick a specific GPU
-  CUDA_VISIBLE_DEVICES=7 widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --cuda --workers 8
+  CUDA_VISIBLE_DEVICES=7 widget2code-bench-exp --gt_dir /path/to/GT --pred_dir /path/to/results --cuda --workers 8
 
   # Single image mode (prints JSON, no files written)
-  widget2code-bench --gt_image /path/to/gt.png --pred_image /path/to/pred.png --cuda
+  widget2code-bench-exp --gt_image /path/to/gt.png --pred_image /path/to/pred.png --cuda
 
   # Re-generate xlsx from existing evaluation.json files (no recomputation)
-  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --skip_eval
+  widget2code-bench-exp --gt_dir /path/to/GT --pred_dir /path/to/results --skip_eval
 
   # Custom stats output directory and thread count
-  widget2code-bench --gt_dir /path/to/GT --pred_dir /path/to/results --output_dir /path/to/stats --workers 8
+  widget2code-bench-exp --gt_dir /path/to/GT --pred_dir /path/to/results --output_dir /path/to/stats --workers 8
         """
     )
 
