@@ -15,7 +15,7 @@ In verbose mode (default), also produces:
 import json
 import re
 import shutil
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -235,34 +235,40 @@ def _sample_id_from_folder_name(folder_name: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def _copy_and_visualize(src: Path, dst: Path, gt_path: Optional[Path],
-                        lpips_val: float,
-                        metrics_to_render: Optional[List[str]] = None) -> None:
+def _copy_and_visualize(src, dst, gt_path, lpips_val,
+                        metrics_to_render=None, label=None):
     """Copy a sample folder and regenerate viz into dst/evaluation/viz/.
+
+    Module-level so ProcessPoolExecutor can pickle it. Inputs are strings or
+    None (not Path) for pickling robustness.
 
     Strips any existing viz/ from the source copy so we don't carry stale PNGs.
     Only renders the metrics in ``metrics_to_render`` (None = all 12).
+    Returns the label string on success so the parent can report progress.
     """
+    src = Path(src) if src is not None else None
+    dst = Path(dst)
+    gt_path = Path(gt_path) if gt_path is not None else None
+
     if dst.exists():
         shutil.rmtree(dst)
-    if not src.is_dir():
-        return
+    if src is None or not src.is_dir():
+        return (False, label, f"source missing: {src}")
     try:
         shutil.copytree(src, dst, dirs_exist_ok=True)
     except Exception as e:
-        print(f"  warn: copy failed {src} -> {dst}: {e}")
-        return
+        return (False, label, f"copy failed {src} -> {dst}: {e}")
 
     stale_viz = dst / "evaluation" / "viz"
     if stale_viz.exists():
         shutil.rmtree(stale_viz)
 
     if gt_path is None or not gt_path.exists():
-        return
+        return (True, label, None)
 
     pred_path = dst / "output.png"
     if not pred_path.exists():
-        return
+        return (True, label, None)
 
     try:
         from widget_quality.utils import load_image, resize_to_match
@@ -271,7 +277,6 @@ def _copy_and_visualize(src: Path, dst: Path, gt_path: Optional[Path],
         pred_img = load_image(str(pred_path))
         gen = resize_to_match(gt_img, pred_img)
 
-        # Reuse cached OCR from eval step if present (big speedup).
         ocr_gt = ocr_gen = None
         ocr_path = dst / "evaluation" / "ocr.json"
         if ocr_path.exists():
@@ -286,8 +291,14 @@ def _copy_and_visualize(src: Path, dst: Path, gt_path: Optional[Path],
         generate_visualizations(gt_img, pred_img, gen, str(dst), lpips_val,
                                 ocr_gt=ocr_gt, ocr_gen=ocr_gen,
                                 metrics_to_render=metrics_to_render)
+        return (True, label, None)
     except Exception as e:
-        print(f"  warn: viz failed for {dst}: {e}")
+        return (False, label, f"viz failed for {dst}: {e}")
+
+
+def _copy_and_visualize_task(args):
+    """Entry point for ProcessPoolExecutor (single pickleable arg)."""
+    return _copy_and_visualize(*args)
 
 
 def save_bad_cases(results_dir: Path, output_dir: Path, df_raw: pd.DataFrame,
@@ -316,8 +327,12 @@ def save_bad_cases(results_dir: Path, output_dir: Path, df_raw: pd.DataFrame,
         return gt_id_map.get(four) if four else None
 
     sample_bad_metrics: Dict[str, List[str]] = {sid: [] for sid in df_raw["image_id"].tolist()}
-    # (src, dst, gt_path, lpips_val, metrics_to_render, label)
-    tasks: List[Tuple[Path, Path, Optional[Path], float, List[str], str]] = []
+    # Each task is a tuple: (src, dst, gt_path, lpips_val, metrics_to_render, label)
+    # All strings/primitives (not Path) so ProcessPoolExecutor can pickle them.
+    tasks: List[tuple] = []
+
+    def _str_or_none(p):
+        return str(p) if p is not None else None
 
     # 1. Per-metric planning — write _scores.txt eagerly, queue copy+viz tasks.
     for metric in BAD_METRICS:
@@ -341,8 +356,9 @@ def save_bad_cases(results_dir: Path, output_dir: Path, df_raw: pd.DataFrame,
             folder_name = f"{rank:03d}_score{s:05.1f}_{sid}"
             src = results_dir / sid
             dst = metric_dir / folder_name
-            tasks.append((src, dst, gt_for(sid), lp_by_id.get(sid, 0.0),
-                          [metric], f"{metric}/{folder_name}"))
+            tasks.append((str(src), str(dst), _str_or_none(gt_for(sid)),
+                          lp_by_id.get(sid, 0.0), [metric],
+                          f"{metric}/{folder_name}"))
             scores_txt_lines.append(f"{s:6.1f}  {sid}")
 
         with open(metric_dir / "_scores.txt", "w") as f:
@@ -363,29 +379,32 @@ def save_bad_cases(results_dir: Path, output_dir: Path, df_raw: pd.DataFrame,
             folder_name = f"bad{catastrophic_min:02d}_{sid}"
             src = results_dir / sid
             dst = cat_dir / folder_name
-            tasks.append((src, dst, gt_for(sid), lp_by_id.get(sid, 0.0),
-                          list(ms), f"catastrophic/{folder_name}"))
+            tasks.append((str(src), str(dst), _str_or_none(gt_for(sid)),
+                          lp_by_id.get(sid, 0.0), list(ms),
+                          f"catastrophic/{folder_name}"))
         with open(cat_dir / "_summary.txt", "w") as f:
             f.write("\n".join(summary_lines) + "\n")
         print(f"Queued {len(catastrophic):4d} catastrophic (bad in ≥{catastrophic_min}) cases")
 
-    # 3. Parallel copy + viz.
+    # 3. Parallel copy + viz via ProcessPoolExecutor (sidesteps GIL +
+    #    matplotlib/Agg C-level locks that cap ThreadPool speedup at ~1.5x).
     total = len(tasks)
-    print(f"\nGenerating {total} bad-case folders with {workers} workers...")
-    done = [0]
+    print(f"\nGenerating {total} bad-case folders with {workers} processes...")
+    done = 0
+    step = max(1, total // 20)
 
-    def _run(src, dst, gt_path, lp, metrics, label):
-        _copy_and_visualize(src, dst, gt_path, lp, metrics_to_render=metrics)
-        done[0] += 1
-        if done[0] % max(1, total // 20) == 0 or done[0] == total:
-            print(f"  [{done[0]:4d}/{total}] {label}")
-
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(_run, *t) for t in tasks]
-        for fut in as_completed(futures):
-            exc = fut.exception()
-            if exc is not None:
-                print(f"  warn: task failed: {exc!r}")
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        for fut in as_completed([pool.submit(_copy_and_visualize_task, t) for t in tasks]):
+            try:
+                ok, label, err = fut.result()
+            except Exception as e:
+                print(f"  warn: task raised: {e!r}")
+                continue
+            done += 1
+            if err:
+                print(f"  warn: {label}: {err}")
+            elif done % step == 0 or done == total:
+                print(f"  [{done:4d}/{total}] {label}")
 
     print(f"Bad_cases generation complete ({total} folders).")
 

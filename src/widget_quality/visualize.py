@@ -1,18 +1,19 @@
 """Per-metric visualizations of the evaluation computation process.
 
-Each call to ``generate_visualizations`` produces one PNG per metric in
-``out_dir``, showing GT/Pred intermediates alongside the formula and score.
-Used by the batch evaluator when verbose mode is on (default).
+Uses the object-oriented matplotlib API (Figure + FigureCanvasAgg) to avoid
+pyplot's global state, which serializes concurrent rendering in thread pools.
 """
 
 from pathlib import Path
 
 import cv2
 import matplotlib
-
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+
 import numpy as np
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
 from scipy.stats import wasserstein_distance
 from skimage.color import rgb2gray, rgb2hsv
 from skimage.metrics import structural_similarity as ssim_fn
@@ -29,9 +30,16 @@ from .utils import (
 )
 
 
-def _save(fig: plt.Figure, path: Path) -> None:
+def _new_fig(figsize):
+    """Make an OO Figure with an attached Agg canvas (no pyplot global state)."""
+    fig = Figure(figsize=figsize)
+    FigureCanvasAgg(fig)
+    return fig
+
+
+def _save(fig: Figure, path: Path) -> None:
     fig.savefig(path, dpi=100, bbox_inches="tight")
-    plt.close(fig)
+    # No plt.close needed: Figure is not registered in any global registry.
 
 
 def _text_panel(ax, text: str) -> None:
@@ -53,7 +61,8 @@ def _viz_margin_asymmetry(gt, gen, out: Path) -> None:
     mean = diffs.mean()
     score = 0.0 if mean < 1e-6 else float(diffs.std() / mean)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5))
+    fig = _new_fig((13, 5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     for ax, mask, mm, lab in [(ax1, m_gt, mm_gt, "GT"), (ax2, m_gen, mm_gen, "Pred")]:
         ax.imshow(mask, cmap="gray")
         ax.set_title(f"{lab}: T={mm[0]} R={mm[1]} B={mm[2]} L={mm[3]}", fontsize=10)
@@ -62,8 +71,8 @@ def _viz_margin_asymmetry(gt, gen, out: Path) -> None:
         ys, xs = np.where(mask > 0)
         if len(ys):
             y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
-            ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0,
-                                       fill=False, edgecolor="red", lw=1.5))
+            ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0,
+                                   fill=False, edgecolor="red", lw=1.5))
             ax.annotate("", xy=(W / 2, 0), xytext=(W / 2, y0),
                         arrowprops=dict(arrowstyle="<->", color="yellow"))
             ax.text(W / 2 + 5, y0 / 2, f"T={mm[0]}", color="yellow", fontsize=8)
@@ -111,7 +120,8 @@ def _viz_content_aspect_diff(gt, gen, out: Path) -> None:
     ar_gen = wh_gen[0] / wh_gen[1] if wh_gen else float("nan")
     score = float(abs(np.log(ar_gt / ar_gen))) if (wh_gt and wh_gen) else LAYOUT_MAX_DIFF
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5))
+    fig = _new_fig((13, 5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     for ax, img, b, wh, lab in [(ax1, gt, b_gt, wh_gt, "GT"), (ax2, gen, b_gen, wh_gen, "Pred")]:
         ax.imshow(img); ax.axis("off")
         if wh:
@@ -120,8 +130,8 @@ def _viz_content_aspect_diff(gt, gen, out: Path) -> None:
             ax.set_title(f"{lab} (empty)", fontsize=10)
         if b:
             x0, y0, x1, y1 = b
-            ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0,
-                                       fill=False, edgecolor="lime", lw=2))
+            ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0,
+                                   fill=False, edgecolor="lime", lw=2))
 
     txt = (
         "Formula: |log(AR_gt / AR_gen)|,  AR = bbox_w / bbox_h\n\n"
@@ -165,7 +175,8 @@ def _viz_area_ratio_diff(gt, gen, out: Path, min_area: int = 10) -> None:
     r_gen = ratio(a_gen)
     score = abs(r_gen - r_gt) if (r_gt is not None and r_gen is not None) else LAYOUT_MAX_DIFF
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5))
+    fig = _new_fig((13, 5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     ax1.imshow(c_gt); ax1.axis("off"); ax1.set_title(f"GT components (n={len(a_gt)})")
     ax2.imshow(c_gen); ax2.axis("off"); ax2.set_title(f"Pred components (n={len(a_gen)})")
 
@@ -205,11 +216,12 @@ def _viz_text_jaccard(gt, gen, res_gt, res_gen, out: Path) -> None:
             pts = np.array(bbox, dtype=np.int32)
             x0, y0 = pts[:, 0].min(), pts[:, 1].min()
             x1, y1 = pts[:, 0].max(), pts[:, 1].max()
-            ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0,
-                                       fill=False, edgecolor="yellow", lw=1.2))
+            ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0,
+                                   fill=False, edgecolor="yellow", lw=1.2))
             ax.text(x0, max(0, y0 - 3), text, color="red", fontsize=7)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5.5))
+    fig = _new_fig((13, 5.5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     draw(ax1, gt, res_gt, f"GT OCR (|tokens|={len(s_gt)})")
     draw(ax2, gen, res_gen, f"Pred OCR (|tokens|={len(s_gen)})")
 
@@ -238,7 +250,8 @@ def _viz_contrast_diff(gt, gen, out: Path) -> None:
     c_gen = (p_gen[1] + 0.05) / (p_gen[0] + 0.05)
     diff = float(np.clip(abs(c_gt - c_gen), 0, 5))
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5))
+    fig = _new_fig((13, 5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     for ax, g, p, c, lab in [(ax1, g_gt, p_gt, c_gt, "GT"), (ax2, g_gen, p_gen, c_gen, "Pred")]:
         ax.hist(g.ravel(), bins=50, color="gray", alpha=0.7)
         ax.axvline(p[0], color="blue", label=f"P5 = {p[0]:.2f}")
@@ -298,13 +311,14 @@ def _viz_contrast_local_diff(gt, gen, res_gt, res_gen, out: Path) -> None:
     def draw(ax, img, rows, title):
         ax.imshow(img); ax.axis("off"); ax.set_title(title)
         for _, (x0, y0, x1, y1), c in rows:
-            ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0,
-                                       fill=False, edgecolor="yellow", lw=1.2))
+            ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0,
+                                   fill=False, edgecolor="yellow", lw=1.2))
             ax.text(x0, max(0, y0 - 3), f"{c:.2f}", color="cyan", fontsize=7)
 
     mean_gt_str = f"{mean_gt:.2f}" if mean_gt is not None else "—"
     mean_gen_str = f"{mean_gen:.2f}" if mean_gen is not None else "—"
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5.5))
+    fig = _new_fig((13, 5.5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     draw(ax1, gt, cs_gt, f"GT: {len(cs_gt)} boxes  mean={mean_gt_str}")
     draw(ax2, gen, cs_gen, f"Pred: {len(cs_gen)} boxes  mean={mean_gen_str}")
 
@@ -337,7 +351,8 @@ def _viz_hist_emd(gt, gen, out: Path, *, channel_idx: int, bins: int,
     emd = wasserstein_distance(np.arange(bins), np.arange(bins), h_gt_n, h_gen_n)
     score = float(np.clip(np.exp(-emd / denom), 0, 1))
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5))
+    fig = _new_fig((13, 5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     w = edges[1] - edges[0]
     ax1.bar(edges[:-1], h_gt_n, width=w, align="edge", color="steelblue", alpha=0.8)
     ax1.set_title(f"GT {title} hist (bins={bins})")
@@ -383,7 +398,8 @@ def _viz_polarity(gt, gen, out: Path, q: float = 0.1, eps: float = 1e-6) -> None
         pol_score = 1.0 if p_gt == p_gen else 0.0
         score = float(np.clip(pol_score * np.exp(-abs(s_gt - s_gen) * 5), 0, 1))
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5.5))
+    fig = _new_fig((13, 5.5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     for ax, L, bg, fg, c, s, lab in [
         (ax1, L_gt, bg_gt, fg_gt, c_gt, s_gt, "GT"),
         (ax2, L_gen, bg_gen, fg_gen, c_gen, s_gen, "Pred"),
@@ -416,7 +432,8 @@ def _viz_ssim(gt, gen, out: Path) -> None:
     ssim_val, ssim_map = ssim_fn(gt, gen, channel_axis=2, data_range=1.0, full=True)
     smap = ssim_map.mean(axis=-1)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5))
+    fig = _new_fig((13, 5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     ax1.imshow(gt); ax1.axis("off"); ax1.set_title("GT")
     ax2.imshow(gen); ax2.axis("off"); ax2.set_title("Pred (resized)")
     im = ax3.imshow(smap, cmap="viridis", vmin=0, vmax=1)
@@ -429,7 +446,8 @@ def _viz_ssim(gt, gen, out: Path) -> None:
 
 def _viz_lpips(gt, gen, lpips_val: float, out: Path) -> None:
     diff = np.abs(gt - gen).mean(axis=-1)
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(13, 5))
+    fig = _new_fig((13, 5))
+    ax1, ax2, ax3 = fig.subplots(1, 3)
     ax1.imshow(gt); ax1.axis("off"); ax1.set_title("GT")
     ax2.imshow(gen); ax2.axis("off"); ax2.set_title("Pred (resized)")
     im = ax3.imshow(diff, cmap="hot", vmin=0, vmax=1)
@@ -453,11 +471,12 @@ def _viz_geometry(gt_raw, pred_raw, out: Path, alpha=0.6, beta=0.4, decay=3.0) -
     size_score = float(np.exp(-decay * area_diff))
     score = float(np.clip(alpha * aspect_score + beta * size_score, 0, 1))
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
-    ax1.add_patch(plt.Rectangle((0, 0), w1, h1, fill=False, edgecolor="blue", lw=2,
-                                label=f"GT {w1}×{h1}"))
-    ax1.add_patch(plt.Rectangle((0, 0), w2, h2, fill=False, edgecolor="red", lw=2,
-                                ls="--", label=f"Pred {w2}×{h2}"))
+    fig = _new_fig((13, 5))
+    ax1, ax2 = fig.subplots(1, 2)
+    ax1.add_patch(Rectangle((0, 0), w1, h1, fill=False, edgecolor="blue", lw=2,
+                            label=f"GT {w1}×{h1}"))
+    ax1.add_patch(Rectangle((0, 0), w2, h2, fill=False, edgecolor="red", lw=2,
+                            ls="--", label=f"Pred {w2}×{h2}"))
     ax1.set_xlim(0, max(w1, w2) * 1.1); ax1.set_ylim(max(h1, h2) * 1.1, 0)
     ax1.set_aspect("equal"); ax1.legend(); ax1.set_title("Sizes overlaid")
 
@@ -490,15 +509,8 @@ def generate_visualizations(gt_raw, pred_raw, gen_resized, pred_folder: str,
                             metrics_to_render=None) -> None:
     """Produce per-metric PNGs into <pred_folder>/evaluation/viz/.
 
-    Args:
-        gt_raw:            Original GT image (float [0, 1], RGB, HxW[x3]) — geometry uses this.
-        pred_raw:          Original pred image (same format) — geometry uses this.
-        gen_resized:       Pred resized to GT size — all non-geometry metrics use this.
-        pred_folder:       Sample folder; viz files go into pred_folder/evaluation/viz/.
-        lpips_val:         Pre-computed LPIPS score (so we don't re-run the model).
-        ocr_gt / ocr_gen:  Optional cached EasyOCR output. If None and a legibility
-                           metric is rendered, OCR is run on the fly.
-        metrics_to_render: Iterable of metric names to render. None → all 12.
+    Uses OO matplotlib (Figure + FigureCanvasAgg) — no pyplot global state, so
+    calls from different threads don't serialize on the pyplot lock.
     """
     viz_dir = Path(pred_folder) / "evaluation" / "viz"
     viz_dir.mkdir(parents=True, exist_ok=True)
