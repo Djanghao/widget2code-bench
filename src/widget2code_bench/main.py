@@ -79,7 +79,13 @@ Examples:
     parser.add_argument("--pred_name", type=str, default="output.png",
                         help="Prediction filename inside each subfolder (default: output.png)")
     parser.add_argument("--minimal", action="store_true",
-                        help="Minimal mode: skip per-metric visualization PNGs (default: verbose with viz)")
+                        help="Minimal mode: skip per-metric visualization PNGs and bad_cases (default: verbose)")
+    parser.add_argument("--bad_score_threshold", type=float, default=5.0,
+                        help="Bad-case absolute score threshold (default: 5.0)")
+    parser.add_argument("--bad_top_percent", type=float, default=5.0,
+                        help="Bad-case top-N worst percent (default: 5.0)")
+    parser.add_argument("--catastrophic_min", type=int, default=5,
+                        help="Sample flagged catastrophic if bad on this many metrics (default: 5)")
 
     args = parser.parse_args()
 
@@ -186,7 +192,11 @@ def _run_batch(args):
     print("=" * 80)
     print("STEP 2: Generating Metrics Statistics")
     print("=" * 80)
-    ret = generate_statistics(str(pred_dir), str(output_dir))
+    ret = generate_statistics(str(pred_dir), str(output_dir),
+                              verbose=not args.minimal,
+                              bad_score_threshold=args.bad_score_threshold,
+                              bad_top_percent=args.bad_top_percent,
+                              catastrophic_min=args.catastrophic_min)
     if ret != 0:
         sys.exit(ret)
 
