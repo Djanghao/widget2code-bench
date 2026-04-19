@@ -13,10 +13,12 @@ In verbose mode (default), also produces:
 """
 
 import json
+import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import numpy as np
 
@@ -56,10 +58,9 @@ BAD_METRICS = [
     "ssim",
 ]
 
-# bad = (score < BAD_SCORE_THRESHOLD) ∪ (score in worst BAD_TOP_PERCENT %)
-BAD_SCORE_THRESHOLD = 5.0
-BAD_TOP_PERCENT = 5.0
+BAD_PER_METRIC = 20
 CATASTROPHIC_MIN_METRICS = 5
+BAD_WORKERS = 32
 
 
 try:
@@ -209,41 +210,123 @@ def _score_for_metric(df: pd.DataFrame, metric: str) -> np.ndarray:
     return arr
 
 
-def _bad_mask(scores: np.ndarray, score_threshold: float, top_percent: float) -> np.ndarray:
-    """Union of {score < threshold} and {worst top_percent%}."""
+def _bad_indices(scores: np.ndarray, n: int) -> np.ndarray:
+    """Return indices of the n worst (lowest-scoring) samples, ascending."""
     if len(scores) == 0:
-        return np.zeros(0, dtype=bool)
-    under_threshold = scores < score_threshold
-    top_k = max(1, int(np.ceil(len(scores) * top_percent / 100.0)))
-    order = np.argsort(scores)
-    top_mask = np.zeros(len(scores), dtype=bool)
-    top_mask[order[:top_k]] = True
-    return under_threshold | top_mask
+        return np.zeros(0, dtype=int)
+    n = min(n, len(scores))
+    return np.argsort(scores)[:n]
+
+
+def _build_gt_id_map(gt_dir: Path) -> Dict[str, Path]:
+    """Map 4-digit sample ID -> GT image path."""
+    out: Dict[str, Path] = {}
+    for p in gt_dir.iterdir():
+        if not p.is_file():
+            continue
+        m = re.search(r'(\d{4})', p.name)
+        if m:
+            out.setdefault(m.group(1), p)
+    return out
+
+
+def _sample_id_from_folder_name(folder_name: str) -> Optional[str]:
+    m = re.search(r'(\d{4})', folder_name)
+    return m.group(1) if m else None
+
+
+def _copy_and_visualize(src: Path, dst: Path, gt_path: Optional[Path],
+                        lpips_val: float,
+                        metrics_to_render: Optional[List[str]] = None) -> None:
+    """Copy a sample folder and regenerate viz into dst/evaluation/viz/.
+
+    Strips any existing viz/ from the source copy so we don't carry stale PNGs.
+    Only renders the metrics in ``metrics_to_render`` (None = all 12).
+    """
+    if dst.exists():
+        shutil.rmtree(dst)
+    if not src.is_dir():
+        return
+    try:
+        shutil.copytree(src, dst, dirs_exist_ok=True)
+    except Exception as e:
+        print(f"  warn: copy failed {src} -> {dst}: {e}")
+        return
+
+    stale_viz = dst / "evaluation" / "viz"
+    if stale_viz.exists():
+        shutil.rmtree(stale_viz)
+
+    if gt_path is None or not gt_path.exists():
+        return
+
+    pred_path = dst / "output.png"
+    if not pred_path.exists():
+        return
+
+    try:
+        from widget_quality.utils import load_image, resize_to_match
+        from widget_quality.visualize import generate_visualizations
+        gt_img = load_image(str(gt_path))
+        pred_img = load_image(str(pred_path))
+        gen = resize_to_match(gt_img, pred_img)
+
+        # Reuse cached OCR from eval step if present (big speedup).
+        ocr_gt = ocr_gen = None
+        ocr_path = dst / "evaluation" / "ocr.json"
+        if ocr_path.exists():
+            try:
+                with open(ocr_path) as f:
+                    cached = json.load(f)
+                ocr_gt = cached.get("gt")
+                ocr_gen = cached.get("pred")
+            except Exception:
+                pass
+
+        generate_visualizations(gt_img, pred_img, gen, str(dst), lpips_val,
+                                ocr_gt=ocr_gt, ocr_gen=ocr_gen,
+                                metrics_to_render=metrics_to_render)
+    except Exception as e:
+        print(f"  warn: viz failed for {dst}: {e}")
 
 
 def save_bad_cases(results_dir: Path, output_dir: Path, df_raw: pd.DataFrame,
-                   score_threshold: float = BAD_SCORE_THRESHOLD,
-                   top_percent: float = BAD_TOP_PERCENT,
-                   catastrophic_min: int = CATASTROPHIC_MIN_METRICS) -> None:
-    """Per-metric worst-case sample copies + catastrophic cross-metric summary."""
+                   gt_dir: Optional[Path] = None,
+                   per_metric: int = BAD_PER_METRIC,
+                   catastrophic_min: int = CATASTROPHIC_MIN_METRICS,
+                   workers: int = BAD_WORKERS) -> None:
+    """Per-metric worst-case sample copies + catastrophic rollup (parallel).
+
+    Each copied sample folder also gets fresh per-metric viz PNGs into
+    <copy>/evaluation/viz/. Viz is only produced here (not during eval).
+    Copy+viz runs across all metrics + catastrophic in a single thread pool.
+    """
     bad_root = output_dir / "bad_cases"
     bad_root.mkdir(parents=True, exist_ok=True)
 
-    # Track per-sample bad-metric memberships for catastrophic rollup.
-    sample_bad_metrics: Dict[str, List[str]] = {sid: [] for sid in df_raw["image_id"].tolist()}
+    gt_id_map = _build_gt_id_map(gt_dir) if gt_dir is not None else {}
 
+    lp_by_id: Dict[str, float] = {}
+    if "lp" in df_raw.columns and "image_id" in df_raw.columns:
+        for sid, lp in zip(df_raw["image_id"].to_numpy(), df_raw["lp"].to_numpy()):
+            lp_by_id[str(sid)] = float(lp)
+
+    def gt_for(sid: str) -> Optional[Path]:
+        four = _sample_id_from_folder_name(sid)
+        return gt_id_map.get(four) if four else None
+
+    sample_bad_metrics: Dict[str, List[str]] = {sid: [] for sid in df_raw["image_id"].tolist()}
+    # (src, dst, gt_path, lpips_val, metrics_to_render, label)
+    tasks: List[Tuple[Path, Path, Optional[Path], float, List[str], str]] = []
+
+    # 1. Per-metric planning — write _scores.txt eagerly, queue copy+viz tasks.
     for metric in BAD_METRICS:
         scores = _score_for_metric(df_raw, metric)
-        mask = _bad_mask(scores, score_threshold, top_percent)
+        idx = _bad_indices(scores, per_metric)
 
         ids = df_raw["image_id"].to_numpy()
-        bad_ids = ids[mask]
-        bad_scores = scores[mask]
-
-        # Sort ascending (worst first).
-        order = np.argsort(bad_scores)
-        bad_ids = bad_ids[order]
-        bad_scores = bad_scores[order]
+        bad_ids = ids[idx]
+        bad_scores = scores[idx]
 
         if len(bad_ids) == 0:
             continue
@@ -258,20 +341,15 @@ def save_bad_cases(results_dir: Path, output_dir: Path, df_raw: pd.DataFrame,
             folder_name = f"{rank:03d}_score{s:05.1f}_{sid}"
             src = results_dir / sid
             dst = metric_dir / folder_name
-            if dst.exists():
-                shutil.rmtree(dst)
-            if src.is_dir():
-                try:
-                    shutil.copytree(src, dst, dirs_exist_ok=True)
-                except Exception as e:
-                    print(f"  warn: copy failed for {sid} -> {dst}: {e}")
+            tasks.append((src, dst, gt_for(sid), lp_by_id.get(sid, 0.0),
+                          [metric], f"{metric}/{folder_name}"))
             scores_txt_lines.append(f"{s:6.1f}  {sid}")
 
         with open(metric_dir / "_scores.txt", "w") as f:
             f.write("\n".join(scores_txt_lines) + "\n")
-        print(f"Saved {len(bad_ids):4d} bad cases for {metric}")
+        print(f"Queued {len(bad_ids):4d} bad cases for {metric}")
 
-    # Catastrophic: samples bad on ≥ catastrophic_min metrics.
+    # 2. Catastrophic planning — write _summary.txt eagerly, queue tasks.
     catastrophic = [(sid, ms) for sid, ms in sample_bad_metrics.items()
                     if len(ms) >= catastrophic_min]
     catastrophic.sort(key=lambda t: (-len(t[1]), t[0]))
@@ -279,31 +357,45 @@ def save_bad_cases(results_dir: Path, output_dir: Path, df_raw: pd.DataFrame,
     if catastrophic:
         cat_dir = bad_root / f"_catastrophic_{catastrophic_min}plus"
         cat_dir.mkdir(parents=True, exist_ok=True)
-
         summary_lines = []
         for sid, ms in catastrophic:
             summary_lines.append(f"bad-in-{len(ms):2d}  {sid}  {','.join(ms)}")
             folder_name = f"bad{catastrophic_min:02d}_{sid}"
             src = results_dir / sid
             dst = cat_dir / folder_name
-            if dst.exists():
-                shutil.rmtree(dst)
-            if src.is_dir():
-                try:
-                    shutil.copytree(src, dst, dirs_exist_ok=True)
-                except Exception as e:
-                    print(f"  warn: copy failed for {sid} -> {dst}: {e}")
-
+            tasks.append((src, dst, gt_for(sid), lp_by_id.get(sid, 0.0),
+                          list(ms), f"catastrophic/{folder_name}"))
         with open(cat_dir / "_summary.txt", "w") as f:
             f.write("\n".join(summary_lines) + "\n")
-        print(f"Saved {len(catastrophic):4d} catastrophic (bad in ≥{catastrophic_min}) cases")
+        print(f"Queued {len(catastrophic):4d} catastrophic (bad in ≥{catastrophic_min}) cases")
+
+    # 3. Parallel copy + viz.
+    total = len(tasks)
+    print(f"\nGenerating {total} bad-case folders with {workers} workers...")
+    done = [0]
+
+    def _run(src, dst, gt_path, lp, metrics, label):
+        _copy_and_visualize(src, dst, gt_path, lp, metrics_to_render=metrics)
+        done[0] += 1
+        if done[0] % max(1, total // 20) == 0 or done[0] == total:
+            print(f"  [{done[0]:4d}/{total}] {label}")
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_run, *t) for t in tasks]
+        for fut in as_completed(futures):
+            exc = fut.exception()
+            if exc is not None:
+                print(f"  warn: task failed: {exc!r}")
+
+    print(f"Bad_cases generation complete ({total} folders).")
 
 
 def generate_statistics(results_dir: str, output_dir: str,
                         verbose: bool = True,
-                        bad_score_threshold: float = BAD_SCORE_THRESHOLD,
-                        bad_top_percent: float = BAD_TOP_PERCENT,
-                        catastrophic_min: int = CATASTROPHIC_MIN_METRICS) -> int:
+                        gt_dir: Optional[str] = None,
+                        bad_per_metric: int = BAD_PER_METRIC,
+                        catastrophic_min: int = CATASTROPHIC_MIN_METRICS,
+                        bad_workers: int = BAD_WORKERS) -> int:
     """Entry point for statistics generation. Always produces raw/black/white/zero.
 
     In verbose mode, also writes bad_cases/ with per-metric worst samples and a
@@ -370,11 +462,12 @@ def generate_statistics(results_dir: str, output_dir: str,
                           sr_ratio, sr_count, success_ratio_str)
 
     if verbose:
-        print(f"\nGenerating bad_cases (score<{bad_score_threshold} ∪ top {bad_top_percent}%)...")
+        print(f"\nGenerating bad_cases (worst {bad_per_metric} per metric)...")
         save_bad_cases(results_dir, output_dir, df_raw,
-                       score_threshold=bad_score_threshold,
-                       top_percent=bad_top_percent,
-                       catastrophic_min=catastrophic_min)
+                       gt_dir=Path(gt_dir) if gt_dir else None,
+                       per_metric=bad_per_metric,
+                       catastrophic_min=catastrophic_min,
+                       workers=bad_workers)
 
     print(f"\nSummary Statistics:")
     print(f"  Total matched pairs: {num_matched}")

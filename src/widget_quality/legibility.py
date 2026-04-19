@@ -69,11 +69,13 @@ def local_contrast_from_text_regions(img, ocr_results, min_area=20):
     return float(np.mean(contrasts))
 
 
-def compute_legibility(gt, gen):
+def compute_legibility(gt, gen, return_ocr=False):
     """
     Compute legibility metrics between GT and generated widget.
 
-    Returns dict with: TextJaccard, ContrastDiff, ContrastLocalDiff
+    Returns dict with: TextJaccard, ContrastDiff, ContrastLocalDiff.
+    If ``return_ocr=True``, returns (metrics_dict, ocr_gt, ocr_gen) where each
+    ocr list is the raw EasyOCR ``readtext`` output (bbox, text, confidence).
     """
     txt_gt, results_gt = ocr_text_easyocr(gt)
     txt_gen, results_gen = ocr_text_easyocr(gen)
@@ -98,8 +100,11 @@ def compute_legibility(gt, gen):
 
     contrast_local_diff = float(np.clip(contrast_local_diff, 0, MAX_DIFF))
 
-    return {
+    metrics = {
         "TextJaccard": float(jaccard),
         "ContrastDiff": contrast_diff,
         "ContrastLocalDiff": contrast_local_diff,
     }
+    if return_ocr:
+        return metrics, results_gt, results_gen
+    return metrics

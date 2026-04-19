@@ -24,7 +24,7 @@ def convert_to_serializable(obj):
         return obj.tolist()
     elif isinstance(obj, dict):
         return {key: convert_to_serializable(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
+    elif isinstance(obj, (list, tuple)):
         return [convert_to_serializable(item) for item in obj]
     else:
         return obj
@@ -76,18 +76,28 @@ def _build_id_to_folder_map(directory):
     return id_to_folder
 
 
-def _evaluate_gt_pred(gt_img, pred_img):
-    """Run all metrics on a GT/pred image pair. Returns result dict."""
+def _evaluate_gt_pred(gt_img, pred_img, return_ocr=False):
+    """Run all metrics on a GT/pred image pair. Returns composite result dict.
+
+    If ``return_ocr=True``, also returns (ocr_gt, ocr_gen) as a tuple:
+        (result_dict, ocr_gt, ocr_gen)
+    """
     gen = resize_to_match(gt_img, pred_img)
     geo = compute_aspect_dimensionality_fidelity(gt_img, pred_img)
     perceptual = compute_perceptual(gt_img, gen)
     layout = compute_layout(gt_img, gen)
-    legibility = compute_legibility(gt_img, gen)
+    if return_ocr:
+        legibility, ocr_gt, ocr_gen = compute_legibility(gt_img, gen, return_ocr=True)
+    else:
+        legibility = compute_legibility(gt_img, gen)
     style = compute_style(gt_img, gen)
-    return composite_score(geo, perceptual, layout, legibility, style)
+    result = composite_score(geo, perceptual, layout, legibility, style)
+    if return_ocr:
+        return result, ocr_gt, ocr_gen
+    return result
 
 
-def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder, verbose=True):
+def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
     """
     Evaluate a single GT-prediction pair.
 
@@ -96,8 +106,6 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder, verbose=Tru
         gt_path: Full path to the GT image
         pred_path: Full path to the prediction image
         pred_folder: Folder containing the prediction (for saving evaluation.json)
-        verbose: If True, also produce per-metric visualization PNGs in
-                 <pred_folder>/evaluation/viz/.
 
     Returns (success, result_dict, error_message)
     """
@@ -105,7 +113,7 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder, verbose=Tru
         gt_img = load_image(gt_path)
         pred_img = load_image(pred_path)
 
-        result = _evaluate_gt_pred(gt_img, pred_img)
+        result, ocr_gt, ocr_gen = _evaluate_gt_pred(gt_img, pred_img, return_ocr=True)
         result["id"] = sample_id
 
         eval_dir = os.path.join(pred_folder, "evaluation")
@@ -114,11 +122,9 @@ def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder, verbose=Tru
         with open(evaluation_path, 'w') as f:
             json.dump(convert_to_serializable(result), f, indent=2)
 
-        if verbose:
-            from widget_quality.visualize import generate_visualizations
-            gen = resize_to_match(gt_img, pred_img)
-            lpips_val = float(result.get("PerceptualScore", {}).get("lp", 0.0))
-            generate_visualizations(gt_img, pred_img, gen, pred_folder, lpips_val)
+        ocr_path = os.path.join(eval_dir, "ocr.json")
+        with open(ocr_path, 'w') as f:
+            json.dump(convert_to_serializable({"gt": ocr_gt, "pred": ocr_gen}), f)
 
         return (True, result, None)
 
@@ -275,7 +281,7 @@ def _build_excel_data_row(run_name, avg, success_ratio=None, success_count=None)
 
 
 def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
-                   pred_name="output.png", verbose=True):
+                   pred_name="output.png"):
     """
     Load and evaluate GT-prediction pairs using multithreading.
 
@@ -356,7 +362,7 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
         future_to_info = {}
 
         for sid, gp, pp, pf in matched_tasks:
-            fut = executor.submit(evaluate_single_pair, sid, gp, pp, pf, verbose)
+            fut = executor.submit(evaluate_single_pair, sid, gp, pp, pf)
             future_to_info[fut] = ("matched", sid)
 
         for sid, gp, pf in fill_tasks:

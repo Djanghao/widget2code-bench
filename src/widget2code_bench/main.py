@@ -80,12 +80,12 @@ Examples:
                         help="Prediction filename inside each subfolder (default: output.png)")
     parser.add_argument("--minimal", action="store_true",
                         help="Minimal mode: skip per-metric visualization PNGs and bad_cases (default: verbose)")
-    parser.add_argument("--bad_score_threshold", type=float, default=5.0,
-                        help="Bad-case absolute score threshold (default: 5.0)")
-    parser.add_argument("--bad_top_percent", type=float, default=5.0,
-                        help="Bad-case top-N worst percent (default: 5.0)")
+    parser.add_argument("--bad_per_metric", type=int, default=20,
+                        help="Number of worst samples to save per metric (default: 20)")
     parser.add_argument("--catastrophic_min", type=int, default=5,
                         help="Sample flagged catastrophic if bad on this many metrics (default: 5)")
+    parser.add_argument("--bad_workers", type=int, default=32,
+                        help="Thread pool size for bad_cases copy+viz (default: 32)")
 
     args = parser.parse_args()
 
@@ -183,7 +183,7 @@ def _run_batch(args):
         print("STEP 1: Running Widget Quality Evaluation")
         print("=" * 80)
         evaluate_pairs(str(gt_dir), str(pred_dir), args.workers,
-                       pred_name=args.pred_name, verbose=not args.minimal)
+                       pred_name=args.pred_name)
         print()
     else:
         print("Skipping evaluation step (--skip_eval)\n")
@@ -194,9 +194,10 @@ def _run_batch(args):
     print("=" * 80)
     ret = generate_statistics(str(pred_dir), str(output_dir),
                               verbose=not args.minimal,
-                              bad_score_threshold=args.bad_score_threshold,
-                              bad_top_percent=args.bad_top_percent,
-                              catastrophic_min=args.catastrophic_min)
+                              gt_dir=str(gt_dir),
+                              bad_per_metric=args.bad_per_metric,
+                              catastrophic_min=args.catastrophic_min,
+                              bad_workers=args.bad_workers)
     if ret != 0:
         sys.exit(ret)
 

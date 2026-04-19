@@ -476,34 +476,64 @@ def _viz_geometry(gt_raw, pred_raw, out: Path, alpha=0.6, beta=0.4, decay=3.0) -
     _save(fig, out)
 
 
+ALL_METRICS = {
+    "MarginAsymmetry", "ContentAspectDiff", "AreaRatioDiff",
+    "TextJaccard", "ContrastDiff", "ContrastLocalDiff",
+    "PaletteDistance", "Vibrancy", "PolarityConsistency",
+    "ssim", "lp", "geo_score",
+}
+
+
 def generate_visualizations(gt_raw, pred_raw, gen_resized, pred_folder: str,
-                            lpips_val: float) -> None:
-    """Produce one PNG per metric into <pred_folder>/evaluation/viz/.
+                            lpips_val: float,
+                            ocr_gt=None, ocr_gen=None,
+                            metrics_to_render=None) -> None:
+    """Produce per-metric PNGs into <pred_folder>/evaluation/viz/.
 
     Args:
-        gt_raw:      Original GT image (float [0, 1], RGB, HxW[x3]) — used for geometry.
-        pred_raw:    Original pred image (same format) — used for geometry.
-        gen_resized: Pred resized to GT size — used by all other metrics.
-        pred_folder: Sample folder; viz files go into pred_folder/evaluation/viz/.
-        lpips_val:   Pre-computed LPIPS score (so we don't re-run the model).
+        gt_raw:            Original GT image (float [0, 1], RGB, HxW[x3]) — geometry uses this.
+        pred_raw:          Original pred image (same format) — geometry uses this.
+        gen_resized:       Pred resized to GT size — all non-geometry metrics use this.
+        pred_folder:       Sample folder; viz files go into pred_folder/evaluation/viz/.
+        lpips_val:         Pre-computed LPIPS score (so we don't re-run the model).
+        ocr_gt / ocr_gen:  Optional cached EasyOCR output. If None and a legibility
+                           metric is rendered, OCR is run on the fly.
+        metrics_to_render: Iterable of metric names to render. None → all 12.
     """
     viz_dir = Path(pred_folder) / "evaluation" / "viz"
     viz_dir.mkdir(parents=True, exist_ok=True)
 
-    # OCR once, reused by both legibility viz.
-    _, res_gt = ocr_text_easyocr(gt_raw)
-    _, res_gen = ocr_text_easyocr(gen_resized)
+    render = set(metrics_to_render) if metrics_to_render is not None else ALL_METRICS
 
-    _viz_margin_asymmetry(gt_raw, gen_resized, viz_dir / "MarginAsymmetry.png")
-    _viz_content_aspect_diff(gt_raw, gen_resized, viz_dir / "ContentAspectDiff.png")
-    _viz_area_ratio_diff(gt_raw, gen_resized, viz_dir / "AreaRatioDiff.png")
-    _viz_text_jaccard(gt_raw, gen_resized, res_gt, res_gen, viz_dir / "TextJaccard.png")
-    _viz_contrast_diff(gt_raw, gen_resized, viz_dir / "ContrastDiff.png")
-    _viz_contrast_local_diff(gt_raw, gen_resized, res_gt, res_gen,
-                             viz_dir / "ContrastLocalDiff.png")
-    _viz_palette_distance(gt_raw, gen_resized, viz_dir / "PaletteDistance.png")
-    _viz_vibrancy(gt_raw, gen_resized, viz_dir / "Vibrancy.png")
-    _viz_polarity(gt_raw, gen_resized, viz_dir / "PolarityConsistency.png")
-    _viz_ssim(gt_raw, gen_resized, viz_dir / "ssim.png")
-    _viz_lpips(gt_raw, gen_resized, lpips_val, viz_dir / "lp.png")
-    _viz_geometry(gt_raw, pred_raw, viz_dir / "geo_score.png")
+    needs_ocr = bool({"TextJaccard", "ContrastLocalDiff"} & render)
+    if needs_ocr:
+        if ocr_gt is None:
+            _, ocr_gt = ocr_text_easyocr(gt_raw)
+        if ocr_gen is None:
+            _, ocr_gen = ocr_text_easyocr(gen_resized)
+
+    if "MarginAsymmetry" in render:
+        _viz_margin_asymmetry(gt_raw, gen_resized, viz_dir / "MarginAsymmetry.png")
+    if "ContentAspectDiff" in render:
+        _viz_content_aspect_diff(gt_raw, gen_resized, viz_dir / "ContentAspectDiff.png")
+    if "AreaRatioDiff" in render:
+        _viz_area_ratio_diff(gt_raw, gen_resized, viz_dir / "AreaRatioDiff.png")
+    if "TextJaccard" in render:
+        _viz_text_jaccard(gt_raw, gen_resized, ocr_gt, ocr_gen, viz_dir / "TextJaccard.png")
+    if "ContrastDiff" in render:
+        _viz_contrast_diff(gt_raw, gen_resized, viz_dir / "ContrastDiff.png")
+    if "ContrastLocalDiff" in render:
+        _viz_contrast_local_diff(gt_raw, gen_resized, ocr_gt, ocr_gen,
+                                 viz_dir / "ContrastLocalDiff.png")
+    if "PaletteDistance" in render:
+        _viz_palette_distance(gt_raw, gen_resized, viz_dir / "PaletteDistance.png")
+    if "Vibrancy" in render:
+        _viz_vibrancy(gt_raw, gen_resized, viz_dir / "Vibrancy.png")
+    if "PolarityConsistency" in render:
+        _viz_polarity(gt_raw, gen_resized, viz_dir / "PolarityConsistency.png")
+    if "ssim" in render:
+        _viz_ssim(gt_raw, gen_resized, viz_dir / "ssim.png")
+    if "lp" in render:
+        _viz_lpips(gt_raw, gen_resized, lpips_val, viz_dir / "lp.png")
+    if "geo_score" in render:
+        _viz_geometry(gt_raw, pred_raw, viz_dir / "geo_score.png")
