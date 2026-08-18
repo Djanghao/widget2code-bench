@@ -99,8 +99,14 @@ Examples:
                         help="Sample flagged catastrophic if bad on this many metrics (default: 5)")
     parser.add_argument("--bad_workers", type=int, default=64,
                         help="Process pool size for bad_cases copy+viz (default: 64)")
+    parser.add_argument("--skill-path", action="store_true",
+                        help="Print the path of the bundled agent skill and exit")
 
     args = parser.parse_args()
+
+    if args.skill_path:
+        print(_skill_path())
+        return
 
     # Single image mode
     if args.gt_image or args.pred_image:
@@ -117,6 +123,13 @@ Examples:
     from widget_quality.perceptual import set_device
     set_device(use_cuda=args.cuda)
     _run_batch(args)
+
+
+def _skill_path() -> str:
+    """Where the bundled skill landed, so an agent can read it without the repo."""
+    from importlib.resources import files
+
+    return str(files("widget2code_bench") / "skill" / "SKILL.md")
 
 
 def _run_single(args):

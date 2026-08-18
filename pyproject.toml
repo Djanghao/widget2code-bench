@@ -46,5 +46,10 @@ widget2code-bench-exp = "widget2code_bench.main:main"
 [project.urls]
 Homepage = "https://github.com/Djanghao/widget2code-eval"
 
+[tool.setuptools.package-data]
+# The skill ships with the package so an agent that has the tool installed also
+# has its instructions, instead of having to find the repository they live in.
+widget2code_bench = ["skill/SKILL.md"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
