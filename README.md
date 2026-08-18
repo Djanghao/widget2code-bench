@@ -4,6 +4,37 @@
 
 Benchmark evaluation for widget code generation — 12 quality metrics across layout, legibility, perceptual, style, and geometry.
 
+## Docker (recommended)
+
+The metrics run two neural networks, so their values depend on the numeric stack
+underneath them. The image freezes that stack — Python, NumPy, OpenCV,
+scikit-image, torch, and both networks' weights — and pins every library to one
+thread, because BLAS and OpenCV change their reduction order with the thread
+count.
+
+[![Docker Hub](https://img.shields.io/badge/docker-houstonzhang%2Fw2c--bench-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/houstonzhang/w2c-bench)
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
+  -v /path/to/GT:/gt -v /path/to/predictions:/pred \
+  houstonzhang/w2c-bench:latest \
+  --gt_dir /gt --pred_dir /pred --pred_name output.png --workers 32
+```
+
+On the reference host the container reproduces a direct install of the same
+evaluator **bit for bit** (20 samples, 240 metric values, zero differences).
+That is a property of a machine rather than a promise, so
+[`tools/verify_image.sh`](tools/verify_image.sh) runs the same comparison
+wherever you are:
+
+```bash
+tools/verify_image.sh 20      # host run, container run, then compare every metric
+```
+
+Build and publish it yourself with [`docker/build.sh`](docker/build.sh) and
+[`docker/publish.sh`](docker/publish.sh); [`docker/DOCKERHUB.md`](docker/DOCKERHUB.md)
+is the registry overview.
+
 ## Installation (conda env)
 
 If the `widget2code` env already exists, just activate it — no reinstall needed:
