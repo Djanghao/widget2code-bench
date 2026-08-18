@@ -89,6 +89,19 @@ environment is that the intermediates are produced inside it:
   at a stated number of decimals.
 - `verify_metadata.py` — re-derives a built cache and checks it against itself.
 
+## Using it from an agent
+
+The full instructions - deploy, batch, single pair, the client, every flag, and
+how to read a failure - are one file:
+
+**https://github.com/Djanghao/widget2code-bench/blob/main/SKILL.md**
+
+It also ships inside the image, so an installed copy carries its own manual:
+
+```bash
+docker run --rm houstonzhang/w2c-bench:latest --skill-path
+```
+
 ## Tags
 
 `1.0.0`, `latest`, plus the short commit each image was built from. Pin the digest when
