@@ -8,3 +8,6 @@ __pycache__/
 image_*.png
 /Qwen3VL_size/
 /W2C-*/
+
+# local eval scratch output (3.5G)
+tmp/
