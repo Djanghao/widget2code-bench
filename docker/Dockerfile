@@ -60,10 +60,14 @@ RUN cd /tmp/weights && sha256sum -c /tmp/weights.sha256 \
 # thread count, and OpenCV's own pool does the same; parallelism belongs at the
 # process level, where each pair is independent and the arithmetic is untouched.
 # These bind the CPU path only - the GPU path is governed by the self-check.
+# OpenCV needs its own variable: it runs a pool of its own that the OMP/BLAS
+# variables do not reach, and it defaults to one thread per core. Measured in
+# this image, cv2.getNumThreads() reported 240 with only the OMP caps set.
 ENV OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     NUMEXPR_NUM_THREADS=1 \
+    OPENCV_FOR_THREADS_NUM=1 \
     PYTHONHASHSEED=0 \
     PYTHONDONTWRITEBYTECODE=1
 
