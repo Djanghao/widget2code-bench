@@ -46,19 +46,24 @@ def remove_border_touching_components(mask):
     """
     mask: binary mask, 0/255 or 0/1
     returns cleaned binary mask
+
+    Selects the components whose bounding box does not touch the frame and
+    paints them through a per-label lookup table, so the mask is visited once
+    instead of once per component. The previous formulation compared the whole
+    label image against every label in turn, which is quadratic in
+    (components x pixels): an edge-dense widget with thousands of components
+    spent tens of minutes here.
     """
     mask = (mask > 0).astype(np.uint8)
 
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
 
     H, W = mask.shape
-    cleaned = np.zeros_like(mask)
+    x, y, w, h = stats[:, 0], stats[:, 1], stats[:, 2], stats[:, 3]
+    touches_border = (x == 0) | (y == 0) | (x + w == W) | (y + h == H)
 
-    for i in range(1, num_labels):  # skip background
-        x, y, w, h, area = stats[i]
+    lut = np.zeros(num_labels, dtype=np.uint8)
+    if num_labels > 1:  # label 0 is the background and always stays 0
+        lut[1:] = np.where(touches_border[1:], 0, 255)
 
-        touches_border = (x == 0) or (y == 0) or (x + w == W) or (y + h == H)
-        if not touches_border:
-            cleaned[labels == i] = 255
-
-    return cleaned.astype(np.uint8)
+    return lut[labels]
