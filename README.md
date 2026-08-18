@@ -1,6 +1,6 @@
 # widget2code-bench-exp
 
-**Version:** `0.2.9` · Requires Python `>=3.9`
+**Version:** `1.0.0` · Metric-compatible with `0.2.9` · Requires Python `>=3.9`
 
 Benchmark evaluation for widget code generation — 12 quality metrics across layout, legibility, perceptual, style, and geometry.
 
@@ -17,7 +17,7 @@ count.
 ```bash
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v /path/to/GT:/gt -v /path/to/predictions:/pred \
-  houstonzhang/w2c-bench:latest \
+  houstonzhang/w2c-bench:1.0.0 widget2code-bench-exp \
   --gt_dir /gt --pred_dir /pred --pred_name output.png --workers 32
 ```
 
@@ -34,6 +34,44 @@ tools/verify_image.sh 20      # host run, container run, then compare every metr
 Build and publish it yourself with [`docker/build.sh`](docker/build.sh) and
 [`docker/publish.sh`](docker/publish.sh); [`docker/DOCKERHUB.md`](docker/DOCKERHUB.md)
 is the registry overview.
+
+### Shared single-pair service (training reward)
+
+Like `widget2code-render`, the image normally runs a supervised Unix-socket
+daemon. It mounts only `/tmp/w2c-bench`; both images travel over the socket, so
+the evaluator never sees or mounts the training repository or dataset.
+
+```bash
+W2C_BENCH_IMAGE=houstonzhang/w2c-bench:1.0.0 docker/run.sh 8
+```
+
+```python
+from widget2code_bench.bench_client import BenchClient
+
+async with BenchClient() as bench:
+    scores = await bench.evaluate(
+        "target.png", "rendered.png",
+        metrics="ssim,layout,style,contrast",
+    )
+```
+
+The pure-stdlib client waits across daemon restarts. The daemon has the same
+heartbeat/supervisor contract as `widget2code-render`; a single invalid image
+returns an evaluation error without taking the service down. Startup checks the
+installed dependency manifest and two golden pairs across all 12 metrics before
+creating the socket.
+
+CPU mode is the reproducible default. For GPU mode use one worker per GPU unless
+memory measurements justify more:
+
+```bash
+W2C_BENCH_CUDA=1 docker/run.sh 1
+```
+
+The frozen image versions include Python 3.12.14, torch 2.11.0+cu130,
+torchvision 0.26.0+cu130, EasyOCR 1.7.2, LPIPS 0.1.4, NumPy 2.4.4,
+OpenCV 4.13.0.92, Pillow 12.2.0, and scikit-image 0.26.0. The full checked
+manifest is [`docker/versions.json`](docker/versions.json).
 
 ## Installation (conda env)
 
@@ -55,7 +93,7 @@ conda activate widget2code
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 
 # 3. Install widget2code-bench-exp
-pip install widget2code-bench-exp==0.2.9
+pip install widget2code-bench-exp==1.0.0
 ```
 
 > **Note:** PyPI only ships CPU-only PyTorch. To use `--cuda`, you must install PyTorch from the [official index](https://pytorch.org/get-started/locally/) **before** installing this package.
@@ -70,6 +108,8 @@ Evaluate one GT-prediction pair. Prints JSON results to stdout, no files saved.
 widget2code-bench-exp \
   --gt_image /path/to/gt.png \
   --pred_image /path/to/pred.png \
+  --metrics ssim,geometry,contrast \
+  --json-only \
   --cuda
 ```
 
@@ -104,6 +144,8 @@ gt_dir/                     pred_dir/
 |------|---------|-------------|
 | `--gt_image` | — | Single GT image path |
 | `--pred_image` | — | Single prediction image path |
+| `--metrics` | `all` | Single mode only: comma-separated groups/leaves |
+| `--json-only` | off | Single mode only: emit machine-readable JSON only |
 | `--gt_dir` | — | GT directory (flat image files) |
 | `--pred_dir` | — | Prediction directory (subfolders) |
 | `--pred_name` | `output.png` | Prediction filename inside each subfolder |

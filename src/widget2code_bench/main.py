@@ -13,7 +13,6 @@ from pathlib import Path
 
 from widget2code_bench.eval import evaluate_pairs
 from widget2code_bench.analysis import generate_statistics
-from widget_quality.perceptual import set_device
 
 
 def main():
@@ -66,6 +65,20 @@ Examples:
     # Single image mode
     parser.add_argument("--gt_image", type=str, default=None, help="Path to a single ground truth image")
     parser.add_argument("--pred_image", type=str, default=None, help="Path to a single prediction image")
+    parser.add_argument(
+        "--metrics",
+        type=str,
+        default=None,
+        help=("Comma-separated metric groups or leaves for single-image mode "
+              "(e.g. ssim,geometry,contrast or perceptual,layout; default: all)"),
+    )
+    parser.add_argument(
+        "--json-only",
+        "--json_only",
+        dest="json_only",
+        action="store_true",
+        help="Print only the JSON result in single-image mode (for reward workers)",
+    )
 
     # Batch mode
     parser.add_argument("--gt_dir", type=str, default=None, help="Path to ground truth directory")
@@ -89,9 +102,6 @@ Examples:
 
     args = parser.parse_args()
 
-    # Set device for perceptual metrics
-    set_device(use_cuda=args.cuda)
-
     # Single image mode
     if args.gt_image or args.pred_image:
         if not args.gt_image or not args.pred_image:
@@ -104,20 +114,15 @@ Examples:
     if not args.gt_dir or not args.pred_dir:
         print("Error: Provide either --gt_image/--pred_image or --gt_dir/--pred_dir")
         sys.exit(1)
+    from widget_quality.perceptual import set_device
+    set_device(use_cuda=args.cuda)
     _run_batch(args)
 
 
 def _run_single(args):
     """Evaluate a single GT-prediction image pair. Prints results to stdout, no files saved."""
     import json
-    from widget_quality.utils import load_image, resize_to_match
-    from widget_quality.perceptual import compute_perceptual
-    from widget_quality.layout import compute_layout
-    from widget_quality.legibility import compute_legibility
-    from widget_quality.style import compute_style
-    from widget_quality.geometry import compute_aspect_dimensionality_fidelity
-    from widget_quality.composite import composite_score
-    from widget2code_bench.eval import convert_to_serializable
+    from widget2code_bench.single import evaluate_single
 
     gt_path = Path(args.gt_image)
     pred_path = Path(args.pred_image)
@@ -129,22 +134,21 @@ def _run_single(args):
         print(f"Error: Prediction image does not exist: {pred_path}")
         sys.exit(1)
 
-    print(f"GT Image:   {gt_path}")
-    print(f"Pred Image: {pred_path}")
-    print()
+    if not args.json_only:
+        print(f"GT Image:   {gt_path}")
+        print(f"Pred Image: {pred_path}")
+        print()
 
-    gt_img = load_image(str(gt_path))
-    pred_img = load_image(str(pred_path))
-    gen = resize_to_match(gt_img, pred_img)
-
-    geo = compute_aspect_dimensionality_fidelity(gt_img, pred_img)
-    perceptual = compute_perceptual(gt_img, gen)
-    layout = compute_layout(gt_img, gen)
-    legibility = compute_legibility(gt_img, gen)
-    style = compute_style(gt_img, gen)
-
-    result = composite_score(geo, perceptual, layout, legibility, style)
-    result = convert_to_serializable(result)
+    try:
+        result = evaluate_single(
+            gt_path,
+            pred_path,
+            metrics=args.metrics,
+            use_cuda=args.cuda,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
 
     print(json.dumps(result, indent=2))
 

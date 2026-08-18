@@ -30,14 +30,17 @@ fi
 SHA=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
 REMOTE="${NAMESPACE}/w2c-bench"
 
-# An image that cannot even run its own CLI is not worth a 7 GB upload.
-echo "checking the image runs..."
-docker run --rm "$(docker image inspect -f '{{.Id}}' w2c-bench:latest)" --help >/dev/null
+# Do not publish an image whose installed libraries or metric canaries have
+# drifted from the frozen 1.0.0 baseline.
+echo "verifying frozen versions + metric golden set..."
+docker run --rm --entrypoint python w2c-bench:latest docker/selfcheck.py
 
 docker tag w2c-bench:latest "${REMOTE}:${SHA}"
+docker tag w2c-bench:latest "${REMOTE}:1.0.0"
 docker tag w2c-bench:latest "${REMOTE}:latest"
 echo "pushing ${REMOTE}:${SHA} (~$(docker image inspect -f '{{.Size}}' w2c-bench:latest | awk '{printf "%.1fGB", $1/1e9}'))..."
 docker push "${REMOTE}:${SHA}"
+docker push "${REMOTE}:1.0.0"
 docker push "${REMOTE}:latest"
 
 # The overview a registry shows is not part of the image, so pushing one without

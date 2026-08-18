@@ -18,10 +18,11 @@
 # LAYER ORDER IS THE CONTRACT. Everything above `COPY src/` is the environment
 # layer and must not be rebuilt casually - re-resolving it is what reintroduces
 # drift. Code changes only invalidate the last two layers.
-FROM python:3.12-slim-bookworm
+FROM python:3.12.14-slim-bookworm
 
 LABEL org.opencontainers.image.title="w2c-bench" \
       org.opencontainers.image.description="Deterministic widget2code benchmark evaluator: 12 quality metrics over a frozen CPU numeric stack, with a per-host golden self-check." \
+      org.opencontainers.image.version="1.0.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 # opencv-python-headless still wants libgomp; nothing here needs libGL.
@@ -36,11 +37,11 @@ COPY docker/constraints-cuda.txt /tmp/constraints-cuda.txt
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu130 \
         --extra-index-url https://pypi.org/simple \
         -c /tmp/constraints-cuda.txt \
-        torch==2.11.0 torchvision==0.26.0 \
-    && rm /tmp/constraints-cuda.txt
+        torch==2.11.0 torchvision==0.26.0
 
 COPY docker/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
+RUN pip install --no-cache-dir -c /tmp/constraints-cuda.txt -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt /tmp/constraints-cuda.txt
 
 # Model weights are staged by docker/build.sh from the host caches, then checked
 # against docker/weights.sha256. Baking them in is what makes a run offline and
@@ -72,6 +73,7 @@ ENV OMP_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
     NUMEXPR_NUM_THREADS=1 \
     OPENCV_FOR_THREADS_NUM=1 \
+    TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor \
     PYTHONHASHSEED=0 \
     PYTHONDONTWRITEBYTECODE=1
 
@@ -84,10 +86,18 @@ RUN pip install --no-cache-dir --no-deps .
 # freezing the environment is that the intermediates are generated inside it.
 COPY tools/ tools/
 
+# Same deployment contract as widget2code-render: the image proves its exact
+# dependency set and all public metric outputs before exposing the shared Unix
+# socket.  The proof is cached per host + image stamp in the runtime mount.
+COPY docker/selfcheck.py docker/selfcheck.py
+COPY docker/golden.json docker/golden.json
+COPY docker/versions.json docker/versions.json
+
+ENV W2C_BENCH_RUNTIME_DIR=/tmp/w2c-bench
+
 # Identifies this exact build; the self-check marker is keyed on it, so a machine
 # re-proves itself iff the image actually changed.
 ARG BUILD_STAMP=dev
 ENV W2C_BENCH_STAMP=${BUILD_STAMP}
 
-ENTRYPOINT ["widget2code-bench-exp"]
-CMD ["--help"]
+CMD ["bash", "-c", "CUDA_ARG=; if [ \"${W2C_BENCH_CUDA:-0}\" = 1 ]; then CUDA_ARG=--cuda; fi; python docker/selfcheck.py --cached $CUDA_ARG && exec python -m widget2code_bench.supervisor --workers ${W2C_BENCH_WORKERS:-8} $CUDA_ARG"]

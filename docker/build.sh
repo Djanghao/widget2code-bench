@@ -33,8 +33,11 @@ done
 # --network=host: this machine's docker bridge has no DNS, so RUN steps cannot
 # resolve pypi/deb mirrors on the default build network.
 docker build --network=host -f docker/Dockerfile --build-arg BUILD_STAMP="$STAMP" \
-    -t "$TAG" -t w2c-bench:latest .
+    -t "$TAG" -t w2c-bench:1.0.0 -t w2c-bench:latest .
 
 echo
 echo "built $TAG"
-docker images w2c-bench | head -3
+docker images w2c-bench | sed -n '1,4p'
+echo
+echo "verifying frozen versions + metric golden set..."
+docker run --rm --entrypoint python w2c-bench:latest docker/selfcheck.py

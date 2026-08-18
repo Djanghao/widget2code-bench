@@ -14,9 +14,20 @@ Published from [Djanghao/widget2code-bench](https://github.com/Djanghao/widget2c
 ```bash
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v /path/to/GT:/gt -v /path/to/predictions:/pred \
-  houstonzhang/w2c-bench:latest \
+  houstonzhang/w2c-bench:1.0.0 widget2code-bench-exp \
   --gt_dir /gt --pred_dir /pred --pred_name output.png --workers 32
 ```
+
+For training reward, start the long-lived socket service instead:
+
+```bash
+W2C_BENCH_IMAGE=houstonzhang/w2c-bench:1.0.0 docker/run.sh 8
+```
+
+Only `/tmp/w2c-bench` is mounted. Ground truth and prediction bytes cross the
+Unix socket, and callers may select leaves/groups such as
+`ssim,layout,style,contrast`. A golden 12-metric self-check and exact dependency
+manifest run before the socket appears.
 
 `--gt_dir` is a flat directory of PNGs whose filenames carry a 4-digit id;
 `--pred_dir` holds one subdirectory per id, each containing the file named by
@@ -80,7 +91,7 @@ environment is that the intermediates are produced inside it:
 
 ## Tags
 
-`latest`, plus the short commit each image was built from. Pin the digest when
+`1.0.0`, `latest`, plus the short commit each image was built from. Pin the digest when
 it has to be provably the same image.
 
 Apache-2.0.

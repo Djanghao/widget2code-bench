@@ -1,0 +1,50 @@
+{
+  "canary-0": {
+    "Geometry": {
+      "geo_score": 100.0
+    },
+    "LayoutScore": {
+      "AreaRatioDiff": 100.0,
+      "ContentAspectDiff": 94.28,
+      "MarginAsymmetry": 75.148
+    },
+    "LegibilityScore": {
+      "ContrastDiff": 100.0,
+      "ContrastLocalDiff": 99.297,
+      "TextJaccard": 100.0
+    },
+    "PerceptualScore": {
+      "lp": 0.107,
+      "ssim": 0.786
+    },
+    "StyleScore": {
+      "PaletteDistance": 92.229,
+      "PolarityConsistency": 100.0,
+      "Vibrancy": 43.26
+    }
+  },
+  "canary-1": {
+    "Geometry": {
+      "geo_score": 100.0
+    },
+    "LayoutScore": {
+      "AreaRatioDiff": 100.0,
+      "ContentAspectDiff": 94.28,
+      "MarginAsymmetry": 75.148
+    },
+    "LegibilityScore": {
+      "ContrastDiff": 100.0,
+      "ContrastLocalDiff": 100.0,
+      "TextJaccard": 100.0
+    },
+    "PerceptualScore": {
+      "lp": 0.118,
+      "ssim": 0.816
+    },
+    "StyleScore": {
+      "PaletteDistance": 71.37,
+      "PolarityConsistency": 100.0,
+      "Vibrancy": 45.839
+    }
+  }
+}
