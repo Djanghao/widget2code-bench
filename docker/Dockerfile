@@ -76,6 +76,10 @@ COPY pyproject.toml README.md ./
 COPY src/ src/
 RUN pip install --no-cache-dir --no-deps .
 
+# The cache builder and the comparison helpers ship with the image: the point of
+# freezing the environment is that the intermediates are generated inside it.
+COPY tools/ tools/
+
 # Identifies this exact build; the self-check marker is keyed on it, so a machine
 # re-proves itself iff the image actually changed.
 ARG BUILD_STAMP=dev
