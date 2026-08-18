@@ -11,3 +11,6 @@ image_*.png
 
 # local eval scratch output (3.5G)
 tmp/
+
+# staged model weights for the docker build (651 MB, fetched from host caches)
+docker/weights/

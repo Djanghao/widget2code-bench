@@ -1,0 +1,21 @@
+# Pinned to the exact versions of the widget2code-bench-exp 0.2.9 environment the
+# published numbers were produced in. torch/torchvision are installed separately
+# from the CPU index (see Dockerfile) and are deliberately absent here.
+easyocr==1.7.2
+lpips==0.1.4
+numpy==2.4.4
+opencv-python-headless==4.13.0.92
+openpyxl==3.1.5
+pandas==3.0.3
+pillow==12.2.0
+scikit-image==0.26.0
+scikit-learn==1.8.0
+scipy==1.17.1
+matplotlib==3.10.9
+# easyocr's own transitive set, pinned so a resolver cannot drift them
+pyclipper==1.4.0
+python-bidi==0.6.9
+shapely==2.1.2
+PyYAML==6.0.3
+ninja==1.13.0
+tqdm==4.67.3

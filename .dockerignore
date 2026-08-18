@@ -1,0 +1,6 @@
+.git
+dist
+tmp
+context
+**/__pycache__
+*.egg-info
