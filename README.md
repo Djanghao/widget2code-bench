@@ -1,15 +1,30 @@
 # widget2code-bench-exp
 
+**Version:** `0.2.9` · Requires Python `>=3.9`
+
 Benchmark evaluation for widget code generation — 12 quality metrics across layout, legibility, perceptual, style, and geometry.
 
-## Installation
+## Installation (conda env)
+
+If the `widget2code` env already exists, just activate it — no reinstall needed:
 
 ```bash
-# 1. Install PyTorch with CUDA support first (skip if CPU-only)
+conda activate widget2code
+widget2code-bench-exp --help
+```
+
+Otherwise, create it once:
+
+```bash
+# 1. Create and activate a fresh conda env
+conda create -n widget2code python=3.11 -y
+conda activate widget2code
+
+# 2. Install PyTorch with CUDA support first (skip if CPU-only)
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu126
 
-# 2. Install widget2code-bench-exp
-pip install widget2code-bench-exp
+# 3. Install widget2code-bench-exp
+pip install widget2code-bench-exp==0.2.9
 ```
 
 > **Note:** PyPI only ships CPU-only PyTorch. To use `--cuda`, you must install PyTorch from the [official index](https://pytorch.org/get-started/locally/) **before** installing this package.
