@@ -27,7 +27,7 @@ import json
 import shutil
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
@@ -46,6 +46,78 @@ from widget_quality.geometry import compute_aspect_dimensionality_fidelity
 
 def _f(x):
     return None if x is None else float(x)
+
+
+# --- reuse within one sample --------------------------------------------
+#
+# A sample recomputes the ground truth's own OCR, HSV, greyscale and edge mask
+# several times over: once for its own entry, and again inside each of the two
+# fill evaluations, because those call the pair metrics with the same GT array
+# on one side. `compute_style` alone converts the GT to HSV twice per call, so
+# a sample ran five EasyOCR passes and five rgb2hsv conversions where one of
+# each would do.
+#
+# The fills' own side is a constant image, so everything derived from it is
+# fixed by its shape and its colour and can be shared across samples too.
+#
+# Both caches dispatch on object identity and fall through to the real function
+# for anything else, so every value still comes from the evaluator's own code
+# running on the same input - it just runs once. Only functions whose result
+# the callers treat as read-only are wrapped.
+
+_REAL = {}                 # name -> the unwrapped function
+_CONST = {}                # (fn, colour, h, w) -> result, shared across samples
+_SAMPLE = {}               # id(array) -> {fn: result}, cleared per sample
+_CONST_TAG = {}            # id(array) -> colour, for the two fill images
+
+
+def _dispatch(name, fn):
+    """Wrap `fn` so a repeat call on the same array object returns the same
+    result, and a call on a fill image is answered from the shared cache."""
+    def wrapper(img, *args, **kwargs):
+        if args or kwargs:                    # non-default call: never cached
+            return fn(img, *args, **kwargs)
+        colour = _CONST_TAG.get(id(img))
+        if colour is not None:
+            key = (name, colour, img.shape[0], img.shape[1])
+            if key not in _CONST:
+                _CONST[key] = fn(img)
+            return _CONST[key]
+        slot = _SAMPLE.get(id(img))
+        if slot is None:
+            return fn(img)
+        if name not in slot:
+            slot[name] = fn(img)
+        return slot[name]
+    return wrapper
+
+
+def install_caches():
+    """Point every reference to these functions at one caching wrapper each.
+
+    The metric modules and this one both hold their own module-level references
+    (`from ... import edge_map`), so rebinding only the defining module would
+    leave half the calls uncached and the two halves unshared. The wrapper is
+    keyed on the bare function name so a GT converted here and the same GT
+    converted inside `compute_style` hit the same entry.
+    """
+    if _REAL:
+        return
+    import widget_quality.layout as _layout
+    import widget_quality.legibility as _legibility
+    import widget_quality.style as _style
+
+    here = sys.modules[__name__]
+    for name in ("ocr_text_easyocr", "contrast_ratio", "edge_map",
+                 "rgb2hsv", "rgb2gray"):
+        holders = [m for m in (_legibility, _layout, _style, here)
+                   if getattr(m, name, None) is not None]
+        real = getattr(holders[0], name)
+        _REAL[name] = real
+        wrapper = _dispatch(name, real)
+        for mod in holders:
+            if getattr(mod, name) is real:
+                setattr(mod, name, wrapper)
 
 
 def gt_layout(gt):
@@ -104,13 +176,19 @@ def gt_fill(gt):
     compatibility mode and a full-precision mode can both be derived from it."""
     out = {}
     for name, img in (("black", np.zeros_like(gt)), ("white", np.ones_like(gt))):
-        out[name] = {
-            "geo": _f(compute_aspect_dimensionality_fidelity(gt, img)),
-            "perceptual": {k: _f(v) for k, v in compute_perceptual(gt, img).items()},
-            "layout": {k: _f(v) for k, v in compute_layout(gt, img).items()},
-            "legibility": {k: _f(v) for k, v in compute_legibility(gt, img).items()},
-            "style": {k: _f(v) for k, v in compute_style(gt, img).items()},
-        }
+        # `img` stays referenced for the whole block, so its id cannot be
+        # recycled while the tag names it; the tag is dropped straight after.
+        _CONST_TAG[id(img)] = name
+        try:
+            out[name] = {
+                "geo": _f(compute_aspect_dimensionality_fidelity(gt, img)),
+                "perceptual": {k: _f(v) for k, v in compute_perceptual(gt, img).items()},
+                "layout": {k: _f(v) for k, v in compute_layout(gt, img).items()},
+                "legibility": {k: _f(v) for k, v in compute_legibility(gt, img).items()},
+                "style": {k: _f(v) for k, v in compute_style(gt, img).items()},
+            }
+        finally:
+            _CONST_TAG.pop(id(img), None)
     return out
 
 
@@ -122,23 +200,39 @@ def build_one(src: Path, dst_dir: Path, split: str, category, has_chart):
 
     gt = load_image(str(src))
     h, w = gt.shape[:2]
-    meta = {
-        "id": dst_dir.name,
-        "split": split,
-        "sha256": hashlib.sha256(src.read_bytes()).hexdigest(),
-        "size": [int(w), int(h)],
-        "category": category,
-        "has_chart": has_chart,
-        "eval": {
-            "layout": gt_layout(gt),
-            "legibility": gt_legibility(gt),
-            "style": gt_style(gt),
-            "fill": gt_fill(gt),
-        },
-    }
+    # Everything below derives from this one array; the slot lets the four
+    # sections share the GT's OCR, HSV, greyscale and edge mask instead of
+    # each recomputing them.
+    _SAMPLE[id(gt)] = {}
+    try:
+        meta = {
+            "id": dst_dir.name,
+            "split": split,
+            "sha256": hashlib.sha256(src.read_bytes()).hexdigest(),
+            "size": [int(w), int(h)],
+            "category": category,
+            "has_chart": has_chart,
+            "eval": {
+                "layout": gt_layout(gt),
+                "legibility": gt_legibility(gt),
+                "style": gt_style(gt),
+                "fill": gt_fill(gt),
+            },
+        }
+    finally:
+        _SAMPLE.pop(id(gt), None)
     (dst_dir / "metadata.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return dst_dir.name
+
+
+def _init_worker(use_cuda: bool) -> None:
+    """Load this worker's own models, then install the caches."""
+    set_device(use_cuda=use_cuda)
+    import easyocr
+    from widget_quality import legibility
+    legibility._reader = easyocr.Reader(["en"], gpu=use_cuda)
+    install_caches()
 
 
 def main() -> int:
@@ -156,10 +250,10 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
 
-    set_device(use_cuda=args.cuda)
-    import easyocr
-    from widget_quality import legibility
-    legibility._reader = easyocr.Reader(["en"], gpu=args.cuda)
+    # Models are loaded per worker, not here: the image pins BLAS, OpenMP and
+    # OpenCV to one thread each so the numbers do not depend on how busy the
+    # machine is, which leaves a thread pool holding the GIL on one core. The
+    # parent must not touch CUDA before forking, so nothing is set up here.
 
     category = {}
     if args.categories:
@@ -183,7 +277,9 @@ def main() -> int:
 
     t0 = time.time()
     done = failed = 0
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+    with ProcessPoolExecutor(max_workers=args.workers,
+                             initializer=_init_worker,
+                             initargs=(args.cuda,)) as pool:
         futures = {
             pool.submit(build_one, p, args.out / p.stem, args.split,
                         category.get(p.stem),
