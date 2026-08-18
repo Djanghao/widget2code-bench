@@ -45,12 +45,16 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 # Model weights are staged by docker/build.sh from the host caches, then checked
 # against docker/weights.sha256. Baking them in is what makes a run offline and
 # keeps a silent upstream re-release from changing the metrics.
+#
+# user_network/ is created here on purpose: EasyOCR makedirs it on startup, and
+# the container runs as the invoking host user, who cannot write under /opt.
 ENV TORCH_HOME=/opt/models/torch \
     EASYOCR_MODULE_PATH=/opt/models/easyocr
 COPY docker/weights/ /tmp/weights/
 COPY docker/weights.sha256 /tmp/weights.sha256
 RUN cd /tmp/weights && sha256sum -c /tmp/weights.sha256 \
     && mkdir -p ${TORCH_HOME}/hub/checkpoints ${EASYOCR_MODULE_PATH}/model \
+                ${EASYOCR_MODULE_PATH}/user_network \
     && mv vgg16-397923af.pth ${TORCH_HOME}/hub/checkpoints/ \
     && mv craft_mlt_25k.pth english_g2.pth ${EASYOCR_MODULE_PATH}/model/ \
     && rm -rf /tmp/weights /tmp/weights.sha256 \
