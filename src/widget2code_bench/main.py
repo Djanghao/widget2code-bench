@@ -83,22 +83,18 @@ Examples:
     # Batch mode
     parser.add_argument("--gt_dir", type=str, default=None, help="Path to ground truth directory")
     parser.add_argument("--pred_dir", type=str, default=None, help="Path to prediction directory")
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Path to output directory for statistics (default: {pred_dir}/.analysis)")
+    parser.add_argument("--out", type=str, default=None,
+                        help="Directory that holds run directories (default: <pred_dir>/../runs)")
+    parser.add_argument("--run-name", type=str, default=None,
+                        help="Name of this run's directory (default: <pred_dir>_<UTC timestamp>)")
+    parser.add_argument("--decimals", type=int, default=4,
+                        help="Decimals in the rendered tables (default: 4). Sample values are "
+                             "quantised to 3 as they have been since 0.2.9; samples.jsonl is "
+                             "unaffected by this flag")
     parser.add_argument("--workers", type=int, default=4, help="Number of worker threads (default: 4)")
-    parser.add_argument("--skip_eval", action="store_true",
-                        help="Skip evaluation step (assumes evaluation.json files already exist)")
     parser.add_argument("--cuda", action="store_true", help="Use CUDA/GPU for computation")
     parser.add_argument("--pred_name", type=str, default="output.png",
                         help="Prediction filename inside each subfolder (default: output.png)")
-    parser.add_argument("--minimal", action="store_true",
-                        help="Minimal mode: skip per-metric visualization PNGs and bad_cases (default: verbose)")
-    parser.add_argument("--bad_per_metric", type=int, default=20,
-                        help="Number of worst samples to save per metric (default: 20)")
-    parser.add_argument("--catastrophic_min", type=int, default=5,
-                        help="Sample flagged catastrophic if bad on this many metrics (default: 5)")
-    parser.add_argument("--bad_workers", type=int, default=64,
-                        help="Process pool size for bad_cases copy+viz (default: 64)")
     parser.add_argument("--skill-path", action="store_true",
                         help="Print the path of the bundled agent skill and exit")
 
@@ -167,65 +163,71 @@ def _run_single(args):
 
 
 def _run_batch(args):
-    """Run batch evaluation on directories."""
+    """Score a prediction directory and write one run directory."""
+    import os
+    import time
+    from datetime import datetime, timezone
+
+    from widget2code_bench.eval import evaluate_pairs
+    from widget2code_bench.report import write_run
+    from widget_quality.perceptual import set_device
+
     gt_dir = Path(args.gt_dir)
     pred_dir = Path(args.pred_dir)
+    for label, path in (("GT", gt_dir), ("Prediction", pred_dir)):
+        if not path.exists():
+            print(f"Error: {label} directory does not exist: {path}")
+            sys.exit(1)
 
-    if not gt_dir.exists():
-        print(f"Error: GT directory does not exist: {gt_dir}")
-        sys.exit(1)
+    # One run, one directory. `--out` only names where runs are kept, so several
+    # runs over the same predictions sit side by side instead of overwriting each
+    # other, and the predictions themselves are never written to.
+    runs_dir = Path(args.out) if args.out else pred_dir.parent / "runs"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_name = args.run_name or f"{pred_dir.name}_{stamp}"
+    out_dir = runs_dir / run_name
 
-    if not pred_dir.exists():
-        print(f"Error: Prediction directory does not exist: {pred_dir}")
-        sys.exit(1)
-
-    output_dir = Path(args.output_dir) if args.output_dir else pred_dir / ".analysis"
-
-    print("=" * 80)
-    print("Widget Quality Evaluation Pipeline")
-    print("=" * 80)
-    print(f"GT Directory:     {gt_dir}")
-    print(f"Prediction Dir:   {pred_dir}")
-    print(f"Output Dir:       {output_dir}")
-    print(f"Workers:          {args.workers}")
-    print(f"CUDA:             {'Enabled' if args.cuda else 'Disabled (CPU)'}")
-    print(f"Pred Name:        {args.pred_name}")
-    print(f"Mode:             {'Minimal (no viz)' if args.minimal else 'Verbose (per-metric viz)'}")
-    print("=" * 80)
+    print(f"gt         {gt_dir}")
+    print(f"pred       {pred_dir}  (read-only)")
+    print(f"run        {out_dir}")
+    print(f"workers    {args.workers}   cuda {'on' if args.cuda else 'off'}   "
+          f"decimals {args.decimals}")
     print()
 
-    # Step 1: Run evaluation
-    if not args.skip_eval:
-        print("=" * 80)
-        print("STEP 1: Running Widget Quality Evaluation")
-        print("=" * 80)
-        evaluate_pairs(str(gt_dir), str(pred_dir), args.workers,
-                       pred_name=args.pred_name)
-        print()
-    else:
-        print("Skipping evaluation step (--skip_eval)\n")
+    set_device(use_cuda=args.cuda)
+    started = time.time()
+    results = evaluate_pairs(str(gt_dir), str(pred_dir), args.workers,
+                             pred_name=args.pred_name)
+    elapsed = time.time() - started
 
-    # Step 2: Generate statistics
-    print("=" * 80)
-    print("STEP 2: Generating Metrics Statistics")
-    print("=" * 80)
-    ret = generate_statistics(str(pred_dir), str(output_dir),
-                              verbose=not args.minimal,
-                              gt_dir=str(gt_dir),
-                              bad_per_metric=args.bad_per_metric,
-                              catastrophic_min=args.catastrophic_min,
-                              bad_workers=args.bad_workers)
-    if ret != 0:
-        sys.exit(ret)
+    if not results["matched"]:
+        print("No matched pairs to evaluate.")
+        sys.exit(1)
 
-    # Summary
-    print("\n" + "=" * 80)
-    print("PIPELINE COMPLETED")
-    print("=" * 80)
-    print(f"GT Directory: {gt_dir}")
-    print(f"Prediction Directory: {pred_dir}")
-    print(f"Statistics Output: {output_dir}")
-    print("\nAll steps completed successfully!")
+    write_run(
+        out_dir,
+        manifest={
+            "run": run_name,
+            "gt_dir": str(gt_dir),
+            "pred_dir": str(pred_dir),
+            "pred_name": args.pred_name,
+            "workers": args.workers,
+            "cuda": bool(args.cuda),
+            "image_stamp": os.environ.get("W2C_BENCH_STAMP"),
+            "errors": results["errors"],
+            "seconds": round(elapsed, 1),
+            "finished_at": stamp,
+        },
+        matched=results["matched"],
+        black=results["black"],
+        white=results["white"],
+        digits=args.decimals,
+    )
+
+    print(f"\nwrote {out_dir}")
+    for name in ("run.json", "samples.jsonl", "metrics.json", "summary.md", "summary.xlsx"):
+        if (out_dir / name).exists():
+            print(f"  {name}")
 
 
 if __name__ == "__main__":

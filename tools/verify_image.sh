@@ -14,7 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 N="${1:-20}"
-GT="${2:-/shared/houston/workspace/widget2code-emnlp/data/widget2code-benchmark/test}"
+GT="${2:-/shared/houston/workspace/widget2code-emnlp/tmp/Widget2Code-Data-v2/test}"
 PRED="${3:-/shared/houston/workspace/widget2code-grpo/output/eval_test_9b_2ep}"
 PRED_NAME="${4:-rendered.png}"
 HOST_PY="${HOST_PY:-/shared/houston/miniconda3/envs/widget2code-bench-exp/bin/python}"

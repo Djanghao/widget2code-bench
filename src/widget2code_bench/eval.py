@@ -30,26 +30,47 @@ def convert_to_serializable(obj):
         return obj
 
 
-def _build_id_to_file_map(directory):
-    """Scan a directory for files and extract 4-digit IDs from filenames.
+GT_IMAGE_NAME = "image.png"
 
-    Returns a dict mapping 4-digit ID string -> filename.
-    Raises ValueError if multiple files map to the same ID.
+
+def _build_id_to_file_map(directory):
+    """Map each 4-digit ground-truth id to its image, relative to `directory`.
+
+    Ground truth is one directory per sample - `image_0001/image.png`, with
+    `metadata.json` beside it - which is the layout the published dataset uses
+    and the only one read here. A directory of loose PNGs is the older layout and
+    is rejected by name rather than silently matching nothing, because "0 matched
+    pairs" is a confusing way to learn that a path is out of date.
+
+    Returns a dict mapping 4-digit ID string -> path relative to `directory`.
     """
     id_to_file = {}
-    for name in os.listdir(directory):
-        if not os.path.isfile(os.path.join(directory, name)):
-            continue
+    loose_images = 0
+
+    for name in sorted(os.listdir(directory)):
+        path = os.path.join(directory, name)
         match = re.search(r'(\d{4})', name)
         if not match:
+            continue
+        if os.path.isfile(path):
+            loose_images += name.lower().endswith((".png", ".jpg", ".jpeg"))
+            continue
+        if not os.path.isfile(os.path.join(path, GT_IMAGE_NAME)):
             continue
         four_digit_id = match.group(1)
         if four_digit_id in id_to_file:
             raise ValueError(
                 f"Duplicate ID '{four_digit_id}' found in '{directory}': "
-                f"files '{id_to_file[four_digit_id]}' and '{name}'"
+                f"'{id_to_file[four_digit_id]}' and '{name}/{GT_IMAGE_NAME}'"
             )
-        id_to_file[four_digit_id] = name
+        id_to_file[four_digit_id] = os.path.join(name, GT_IMAGE_NAME)
+
+    if not id_to_file and loose_images:
+        raise ValueError(
+            f"'{directory}' holds {loose_images} loose images and no "
+            f"<id>/{GT_IMAGE_NAME} directories. Ground truth is one directory "
+            f"per sample; see the Widget2Code-Data dataset for the layout."
+        )
     return id_to_file
 
 
@@ -97,68 +118,42 @@ def _evaluate_gt_pred(gt_img, pred_img, return_ocr=False):
     return result
 
 
-def evaluate_single_pair(sample_id, gt_path, pred_path, pred_folder):
-    """
-    Evaluate a single GT-prediction pair.
+def evaluate_single_pair(sample_id, gt_path, pred_path):
+    """Score one GT/prediction pair.
 
-    Args:
-        sample_id: The 4-digit ID string
-        gt_path: Full path to the GT image
-        pred_path: Full path to the prediction image
-        pred_folder: Folder containing the prediction (for saving evaluation.json)
+    Nothing is written here. The prediction directory is an input, and 0.2.9
+    treating it as scratch space is what made two runs over the same predictions
+    overwrite each other. The caller collects results and hands them to
+    `report.write_run`.
 
     Returns (success, result_dict, error_message)
     """
     try:
-        gt_img = load_image(gt_path)
-        pred_img = load_image(pred_path)
-
-        result, ocr_gt, ocr_gen = _evaluate_gt_pred(gt_img, pred_img, return_ocr=True)
+        result = _evaluate_gt_pred(load_image(gt_path), load_image(pred_path))
         result["id"] = sample_id
-
-        eval_dir = os.path.join(pred_folder, "evaluation")
-        os.makedirs(eval_dir, exist_ok=True)
-        evaluation_path = os.path.join(eval_dir, "evaluation.json")
-        with open(evaluation_path, 'w') as f:
-            json.dump(convert_to_serializable(result), f, indent=2)
-
-        ocr_path = os.path.join(eval_dir, "ocr.json")
-        with open(ocr_path, 'w') as f:
-            json.dump(convert_to_serializable({"gt": ocr_gt, "pred": ocr_gen}), f)
-
-        return (True, result, None)
+        return (True, convert_to_serializable(result), None)
 
     except Exception as e:
         return (False, None, f"Error evaluating {sample_id}: {str(e)}")
 
 
-def evaluate_single_pair_fill(sample_id, gt_path, pred_folder):
-    """
-    Evaluate a single GT image against black and white fill images.
-
-    Saves evaluation_black.json and evaluation_white.json in pred_folder.
+def evaluate_single_pair_fill(sample_id, gt_path):
+    """Score a ground truth with no prediction against an all-black and an
+    all-white image, so the summary can show what different assumptions about a
+    failure do to the aggregate. Both depend on the ground truth alone.
 
     Returns (success, black_result, white_result, error_message)
     """
     try:
         gt_img = load_image(gt_path)
-        black_img = np.zeros_like(gt_img)
-        white_img = np.ones_like(gt_img)
 
-        black_result = _evaluate_gt_pred(gt_img, black_img)
+        black_result = _evaluate_gt_pred(gt_img, np.zeros_like(gt_img))
         black_result["id"] = sample_id
-
-        white_result = _evaluate_gt_pred(gt_img, white_img)
+        white_result = _evaluate_gt_pred(gt_img, np.ones_like(gt_img))
         white_result["id"] = sample_id
 
-        eval_dir = os.path.join(pred_folder, "evaluation")
-        os.makedirs(eval_dir, exist_ok=True)
-        for fname, res in [("evaluation_black.json", black_result),
-                           ("evaluation_white.json", white_result)]:
-            with open(os.path.join(eval_dir, fname), 'w') as f:
-                json.dump(convert_to_serializable(res), f, indent=2)
-
-        return (True, black_result, white_result, None)
+        return (True, convert_to_serializable(black_result),
+                convert_to_serializable(white_result), None)
 
     except Exception as e:
         return (False, None, None, f"Error evaluating {sample_id} (fill): {str(e)}")
@@ -299,27 +294,6 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     gt_id_map = _build_id_to_file_map(gt_dir)
     pred_id_map = _build_id_to_folder_map(pred_dir)
 
-    # Clean up old evaluation files
-    print("Cleaning up old evaluation files...")
-    cleaned_count = 0
-
-    excel_path = os.path.join(pred_dir, "evaluation.xlsx")
-    if os.path.exists(excel_path):
-        os.remove(excel_path)
-        cleaned_count += 1
-
-    for folder_name in pred_id_map.values():
-        eval_subdir = os.path.join(pred_dir, folder_name, "evaluation")
-        for fname in ("evaluation.json", "evaluation_black.json", "evaluation_white.json"):
-            for candidate in (os.path.join(eval_subdir, fname),
-                              os.path.join(pred_dir, folder_name, fname)):
-                if os.path.exists(candidate):
-                    os.remove(candidate)
-                    cleaned_count += 1
-
-    if cleaned_count > 0:
-        print(f"   Cleaned {cleaned_count} old evaluation files.\n")
-
     # Build task list by matching IDs
     gt_ids = sorted(gt_id_map.keys())
     total_gt = len(gt_ids)
@@ -362,11 +336,11 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
         future_to_info = {}
 
         for sid, gp, pp, pf in matched_tasks:
-            fut = executor.submit(evaluate_single_pair, sid, gp, pp, pf)
+            fut = executor.submit(evaluate_single_pair, sid, gp, pp)
             future_to_info[fut] = ("matched", sid)
 
         for sid, gp, pf in fill_tasks:
-            fut = executor.submit(evaluate_single_pair_fill, sid, gp, pf)
+            fut = executor.submit(evaluate_single_pair_fill, sid, gp)
             future_to_info[fut] = ("fill", sid)
 
         for future in as_completed(future_to_info):
@@ -413,52 +387,10 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     print(f"  Successfully evaluated: {evaluated}")
     print(f"  Success rate: {num_matched}/{total_gt} = {success_rate:.2f}%")
 
-    if all_scores:
-        keys = ["LayoutScore", "LegibilityScore", "StyleScore", "PerceptualScore", "Geometry"]
-        avg = _compute_avg(all_scores, keys)
-
-        print("\nAverage metrics across all evaluated pairs:")
-        _print_avg(avg)
-
-        # Save average metrics to Excel
-        run_name = os.path.basename(pred_dir)
-        header_row1, header_row2 = _build_excel_headers()
-
-        sr_ratio = round(success_rate, 2)
-        sr_count = f"{num_matched}/{total_gt}"
-
-        data_rows = [_build_excel_data_row(run_name, avg, sr_ratio, sr_count)]
-
-        if all_black_scores:
-            avg_black = _compute_avg(all_scores + all_black_scores, keys)
-            data_rows.append(_build_excel_data_row(
-                f"{run_name} (+ black fill)", avg_black, sr_ratio, sr_count))
-            print("\nAverage metrics (with black fill for missing):")
-            _print_avg(avg_black)
-
-        if all_white_scores:
-            avg_white = _compute_avg(all_scores + all_white_scores, keys)
-            data_rows.append(_build_excel_data_row(
-                f"{run_name} (+ white fill)", avg_white, sr_ratio, sr_count))
-            print("\nAverage metrics (with white fill for missing):")
-            _print_avg(avg_white)
-
-        if num_missing_total > 0:
-            avg_zero = _scale_avg_for_missing(avg, num_matched, num_missing_total)
-            data_rows.append(_build_excel_data_row(
-                f"{run_name} (+ zero fill)", avg_zero, sr_ratio, sr_count))
-            print("\nAverage metrics (with zero fill for missing):")
-            _print_avg(avg_zero)
-
-        df = pd.DataFrame([header_row1, header_row2] + data_rows)
-
-        excel_path = os.path.join(pred_dir, "evaluation.xlsx")
-        df.to_excel(excel_path, index=False, header=False)
-
-        print(f"\nAverage metrics saved to: {excel_path}")
-
-    else:
-        avg = {}
-        print("No valid image pairs to evaluate.")
-
-    return all_scores, avg
+    return {
+        "matched": all_scores,
+        "black": all_black_scores,
+        "white": all_white_scores,
+        "total_gt": total_gt,
+        "errors": errors,
+    }

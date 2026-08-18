@@ -1,3 +1,18 @@
+"""Turn raw metric values into the twelve reported scores.
+
+Per-sample values are quantised to three decimals, as they have been since
+0.2.9. That quantisation is part of the contract rather than a display choice:
+aggregation happens afterwards, so every published mean was taken over these
+values, and keeping it is what makes a mean comparable with an existing table.
+
+What is not kept is the second rounding 0.2.9 applied to the mean itself. That
+one only ever threw away digits of a number already fixed by this module, so the
+report layer now shows the mean to more decimals; rounding its output to two
+recovers the old figure exactly.
+"""
+
+# The reported scores have been quantised to three decimals since 0.2.9.
+SAMPLE_DIGITS = 3
 import numpy as np
 
 
@@ -15,9 +30,9 @@ def handling_layout(layout):
     ContentAspectDiff = smooth_score(layout["ContentAspectDiff"], 0.05, "exp")
     AreaRatioDiff = smooth_score(layout["AreaRatioDiff"], 0.05, "exp")
     return {
-        "MarginAsymmetry": round(MarginAsymmetry, 3),
-        "ContentAspectDiff": round(ContentAspectDiff, 3),
-        "AreaRatioDiff": round(AreaRatioDiff, 3),
+        "MarginAsymmetry": round(MarginAsymmetry, SAMPLE_DIGITS),
+        "ContentAspectDiff": round(ContentAspectDiff, SAMPLE_DIGITS),
+        "AreaRatioDiff": round(AreaRatioDiff, SAMPLE_DIGITS),
     }
 
 
@@ -28,17 +43,17 @@ def handling_legibility(legibility):
     ContrastDiff = 100 * (1 - ContrastDiff / 5.0)
     ContrastLocalDiff = 100 * (1 - ContrastLocalDiff / 5.0)
     return {
-        "TextJaccard": round(TextJaccard, 3),
-        "ContrastDiff": round(ContrastDiff, 3),
-        "ContrastLocalDiff": round(ContrastLocalDiff, 3),
+        "TextJaccard": round(TextJaccard, SAMPLE_DIGITS),
+        "ContrastDiff": round(ContrastDiff, SAMPLE_DIGITS),
+        "ContrastLocalDiff": round(ContrastLocalDiff, SAMPLE_DIGITS),
     }
 
 
 def handling_style(style):
     return {
-        "PaletteDistance": round(100 * style.get("PaletteDistance"), 3),
-        "Vibrancy": round(100 * style.get("Vibrancy"), 3),
-        "PolarityConsistency": round(100 * style.get("PolarityConsistency"), 3),
+        "PaletteDistance": round(100 * style.get("PaletteDistance"), SAMPLE_DIGITS),
+        "Vibrancy": round(100 * style.get("Vibrancy"), SAMPLE_DIGITS),
+        "PolarityConsistency": round(100 * style.get("PolarityConsistency"), SAMPLE_DIGITS),
     }
 
 
@@ -46,8 +61,8 @@ def handling_perceptual(perceptual):
     ssim = np.clip(perceptual.get("SSIM", 0), 0, 1)
     lp = np.clip(perceptual.get("LPIPS", 0), 0, 1)
     return {
-        "ssim": round(ssim, 3),
-        "lp": round(lp, 3),
+        "ssim": round(ssim, SAMPLE_DIGITS),
+        "lp": round(lp, SAMPLE_DIGITS),
     }
 
 
