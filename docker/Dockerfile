@@ -22,7 +22,7 @@ FROM python:3.12.14-slim-bookworm
 
 LABEL org.opencontainers.image.title="w2c-bench" \
       org.opencontainers.image.description="Deterministic widget2code benchmark evaluator: 12 quality metrics over a frozen CPU numeric stack, with a per-host golden self-check." \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.version="1.1.0" \
       org.opencontainers.image.licenses="Apache-2.0"
 
 # opencv-python-headless still wants libgomp; nothing here needs libGL.
@@ -100,4 +100,8 @@ ENV W2C_BENCH_RUNTIME_DIR=/tmp/w2c-bench
 ARG BUILD_STAMP=dev
 ENV W2C_BENCH_STAMP=${BUILD_STAMP}
 
-CMD ["bash", "-c", "CUDA_ARG=; if [ \"${W2C_BENCH_CUDA:-0}\" = 1 ]; then CUDA_ARG=--cuda; fi; python docker/selfcheck.py --cached $CUDA_ARG && exec python -m widget2code_bench.supervisor --workers ${W2C_BENCH_WORKERS:-8} $CUDA_ARG"]
+# No arguments -> the supervised daemon; `--gt_dir ...` -> the batch CLI;
+# `--gt_image ...` -> the single CLI; any other command runs verbatim.
+COPY docker/entrypoint.sh /usr/local/bin/w2c-entrypoint
+ENTRYPOINT ["/usr/local/bin/w2c-entrypoint"]
+CMD []

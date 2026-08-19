@@ -28,19 +28,20 @@ if ! docker image inspect w2c-bench:latest >/dev/null 2>&1; then
 fi
 
 SHA=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
 REMOTE="${NAMESPACE}/w2c-bench"
 
 # Do not publish an image whose installed libraries or metric canaries have
-# drifted from the frozen 1.0.0 baseline.
+# drifted from the frozen baseline.
 echo "verifying frozen versions + metric golden set..."
 docker run --rm --entrypoint python w2c-bench:latest docker/selfcheck.py
 
 docker tag w2c-bench:latest "${REMOTE}:${SHA}"
-docker tag w2c-bench:latest "${REMOTE}:1.0.0"
+docker tag w2c-bench:latest "${REMOTE}:${VERSION}"
 docker tag w2c-bench:latest "${REMOTE}:latest"
 echo "pushing ${REMOTE}:${SHA} (~$(docker image inspect -f '{{.Size}}' w2c-bench:latest | awk '{printf "%.1fGB", $1/1e9}'))..."
 docker push "${REMOTE}:${SHA}"
-docker push "${REMOTE}:1.0.0"
+docker push "${REMOTE}:${VERSION}"
 docker push "${REMOTE}:latest"
 
 # The overview a registry shows is not part of the image, so pushing one without

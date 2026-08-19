@@ -32,8 +32,9 @@ done
 
 # --network=host: this machine's docker bridge has no DNS, so RUN steps cannot
 # resolve pypi/deb mirrors on the default build network.
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
 docker build --network=host -f docker/Dockerfile --build-arg BUILD_STAMP="$STAMP" \
-    -t "$TAG" -t w2c-bench:1.0.0 -t w2c-bench:latest .
+    -t "$TAG" -t "w2c-bench:${VERSION}" -t w2c-bench:latest .
 
 echo
 echo "built $TAG"
