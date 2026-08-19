@@ -17,6 +17,7 @@ from - not from changing what was measured.
 """
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 from typing import Any, Iterable
@@ -115,8 +116,10 @@ def write_run(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Full precision, one line per sample: everything downstream reads this.
+    # Sorted by id, not by completion order, so two runs over the same
+    # predictions produce diffable files.
     with (out_dir / "samples.jsonl").open("w") as fh:
-        for row in matched:
+        for row in sorted(matched, key=lambda r: str(r.get("id", ""))):
             fh.write(json.dumps(row, sort_keys=True) + "\n")
 
     modes = aggregate(matched, black, white)
@@ -144,6 +147,15 @@ def write_run(
         *(f"| {m} | {MODE_LABEL[m]} |" for m in MODES if m in modes),
     ]
     (out_dir / "summary.md").write_text("\n".join(summary) + "\n")
+
+    # Metrics run across the columns, one row per mode - the same table as the
+    # xlsx, in a form a shell or a spreadsheet import reads without pandas.
+    with (out_dir / "summary.csv").open("w", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["mode", *METRICS])
+        for mode in MODES:
+            if mode in modes:
+                writer.writerow([mode] + [round(modes[mode][m], digits) for m in METRICS])
 
     try:
         import pandas as pd
