@@ -59,9 +59,6 @@ ALIASES = {
     "polarity_consistency": ("style", "PolarityConsistency"),
 }
 
-_OCR_DEVICE: bool | None = None
-
-
 def _normalise(token: str) -> str:
     return token.strip().lower().replace("-", "_")
 
@@ -159,12 +156,7 @@ def evaluate_single(
                 "ContrastDiff": float(np.clip(abs(gt_contrast - gen_contrast), 0, 5))
             }
         else:
-            import easyocr
-
-            global _OCR_DEVICE
-            if legibility_module._reader is None or _OCR_DEVICE != use_cuda:
-                legibility_module._reader = easyocr.Reader(["en"], gpu=use_cuda)
-                _OCR_DEVICE = use_cuda
+            legibility_module.set_ocr_device(use_cuda)
             legibility = legibility_module.compute_legibility(gt, gen)
 
     if "style" in selection:

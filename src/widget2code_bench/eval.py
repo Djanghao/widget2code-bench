@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 import json
@@ -137,26 +138,63 @@ def evaluate_single_pair(sample_id, gt_path, pred_path):
         return (False, None, f"Error evaluating {sample_id}: {str(e)}")
 
 
+def _fill_from_metadata(gt_path):
+    """Rebuild the black/white fill scores from `metadata.json` beside the GT.
+
+    The published dataset ships the GT-only half of the evaluation precomputed
+    (see tools/build_metadata.py); the fill scores depend on the ground truth
+    alone, so they can be read instead of recomputed. The stored values are the
+    raw metric outputs, so feeding them back through `composite_score` yields
+    exactly what a fresh evaluation would - the same code path, minus the
+    images. The record carries the image's sha256; on any mismatch, absence, or
+    unexpected shape this returns None and the caller computes from scratch,
+    because a stale cache must never be scored against.
+
+    Returns (black_result, white_result) or None.
+    """
+    meta_path = os.path.join(os.path.dirname(gt_path), "metadata.json")
+    try:
+        with open(meta_path, encoding="utf-8") as fh:
+            meta = json.load(fh)
+        with open(gt_path, "rb") as fh:
+            if meta.get("sha256") != hashlib.sha256(fh.read()).hexdigest():
+                return None
+        results = []
+        for mode in ("black", "white"):
+            f = meta["eval"]["fill"][mode]
+            results.append(composite_score(f["geo"], f["perceptual"], f["layout"],
+                                           f["legibility"], f["style"]))
+        return tuple(results)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def evaluate_single_pair_fill(sample_id, gt_path):
     """Score a ground truth with no prediction against an all-black and an
     all-white image, so the summary can show what different assumptions about a
-    failure do to the aggregate. Both depend on the ground truth alone.
+    failure do to the aggregate. Both depend on the ground truth alone, so a
+    dataset that ships them precomputed in `metadata.json` is read instead of
+    recomputed - validated by the image's sha256.
 
-    Returns (success, black_result, white_result, error_message)
+    Returns (success, black_result, white_result, from_metadata, error_message)
     """
     try:
-        gt_img = load_image(gt_path)
-
-        black_result = _evaluate_gt_pred(gt_img, np.zeros_like(gt_img))
+        cached = _fill_from_metadata(gt_path)
+        if cached is not None:
+            black_result, white_result = (dict(r) for r in cached)
+        else:
+            gt_img = load_image(gt_path)
+            black_result = _evaluate_gt_pred(gt_img, np.zeros_like(gt_img))
+            white_result = _evaluate_gt_pred(gt_img, np.ones_like(gt_img))
         black_result["id"] = sample_id
-        white_result = _evaluate_gt_pred(gt_img, np.ones_like(gt_img))
         white_result["id"] = sample_id
 
         return (True, convert_to_serializable(black_result),
-                convert_to_serializable(white_result), None)
+                convert_to_serializable(white_result), cached is not None, None)
 
     except Exception as e:
-        return (False, None, None, f"Error evaluating {sample_id} (fill): {str(e)}")
+        return (False, None, None, False,
+                f"Error evaluating {sample_id} (fill): {str(e)}")
 
 
 def _compute_avg(scores, keys):
@@ -280,11 +318,14 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     """
     Load and evaluate GT-prediction pairs using multithreading.
 
-    GT dir contains flat image files with 4-digit IDs in filenames (e.g. gt_0001.png).
-    Pred dir contains subfolders with 4-digit IDs in names (e.g. image_0001/output.png).
+    GT dir holds one directory per sample - `image_0001/image.png`, with
+    `metadata.json` beside it - the layout of the published dataset.
+    Pred dir holds subfolders with 4-digit IDs in their names, each containing
+    the file named by `pred_name` (a path relative to the subfolder is fine,
+    e.g. "sft_render/rendered.png").
 
     Args:
-        gt_dir: Path to ground truth directory (flat files)
+        gt_dir: Path to ground truth directory (one subdirectory per sample)
         pred_dir: Path to prediction directory (subfolders)
         num_workers: Number of worker threads (default: 4)
         pred_name: Prediction filename inside each subfolder (e.g. "output.png")
@@ -319,6 +360,7 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     total_tasks = total_matched + total_fill
     evaluated = 0
     errors = 0
+    fills_from_metadata = 0
 
     all_scores = []
     all_black_scores = []
@@ -361,12 +403,14 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
                         errors += 1
                         print(f"[{i}/{total_tasks}] Error: {error_msg}")
                 else:
-                    success, black_res, white_res, error_msg = future.result()
+                    success, black_res, white_res, from_meta, error_msg = future.result()
                     if success:
                         evaluated += 1
+                        fills_from_metadata += from_meta
                         all_black_scores.append(black_res)
                         all_white_scores.append(white_res)
-                        print(f"[{i}/{total_tasks}] {black_res['id']} evaluated (fill) -> "
+                        source = "metadata" if from_meta else "computed"
+                        print(f"[{i}/{total_tasks}] {black_res['id']} evaluated (fill, {source}) -> "
                               f"Geo(black)={black_res['Geometry']['geo_score']:.2f} "
                               f"Geo(white)={white_res['Geometry']['geo_score']:.2f}")
                     else:
@@ -382,7 +426,8 @@ def evaluate_pairs(gt_dir="GT", pred_dir="baseline", num_workers=4,
     print(f"  Matched (with output): {num_matched}")
     print(f"  Missing predictions: {num_missing_total}")
     if total_fill > 0:
-        print(f"  Fill-evaluated (black/white): {len(all_black_scores)}")
+        print(f"  Fill-evaluated (black/white): {len(all_black_scores)} "
+              f"({fills_from_metadata} read from metadata.json)")
     print(f"  Errors during evaluation: {errors}")
     print(f"  Successfully evaluated: {evaluated}")
     print(f"  Success rate: {num_matched}/{total_gt} = {success_rate:.2f}%")

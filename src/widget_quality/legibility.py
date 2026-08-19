@@ -3,12 +3,27 @@ import easyocr
 import cv2
 
 _reader = None
+_reader_gpu = True
 
 
-def _get_reader(gpu=True):
+def set_ocr_device(gpu):
+    """Choose CPU or GPU for the shared EasyOCR reader.
+
+    Call before evaluating; switching device drops the current reader so the
+    next OCR call rebuilds it on the requested one. The historical default is
+    GPU-when-available, which is what an unconfigured reader still does.
+    """
+    global _reader, _reader_gpu
+    gpu = bool(gpu)
+    if _reader is not None and _reader_gpu != gpu:
+        _reader = None
+    _reader_gpu = gpu
+
+
+def _get_reader():
     global _reader
     if _reader is None:
-        _reader = easyocr.Reader(["en"], gpu=gpu)
+        _reader = easyocr.Reader(["en"], gpu=_reader_gpu)
     return _reader
 
 
